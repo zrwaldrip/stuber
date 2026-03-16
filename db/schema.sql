@@ -286,8 +286,9 @@ CREATE TABLE IF NOT EXISTS public.users (
     user_id integer NOT NULL,
     first_name character varying(100) NOT NULL,
     last_name character varying(100) NOT NULL,
+    username character varying(100) NOT NULL,
     email character varying(255) NOT NULL,
-    phone integer NOT NULL,
+    phone varchar(20) NOT NULL,
     profile_photo_url text,
     car_id integer,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
