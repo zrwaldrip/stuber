@@ -31,6 +31,7 @@ const ProfileView = () => {
   const [carPlate, setCarPlate] = useState("EV-04821");
   const [profileImageUrl, setProfileImageUrl] = useState("");
   const [vehicleImageUrl, setVehicleImageUrl] = useState("");
+  const [carId, setCarId] = useState<number | null>(null);
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editFirstName, setEditFirstName] = useState(firstName);
@@ -107,9 +108,26 @@ const ProfileView = () => {
         const response = await fetch(`${API_BASE_URL}/api/users/${userId}`);
         if (response.ok) {
           const user = await response.json();
-          setUsername(user.username);
-          if (user.firstName) setFirstName(user.firstName);
-          if (user.lastName) setLastName(user.lastName);
+          // Note: backend doesn't have username, so we'll construct one from first_name
+          if (user.first_name) {
+            setFirstName(user.first_name);
+            setUsername(user.first_name.toLowerCase().replace(/\s+/g, ''));
+          }
+          if (user.last_name) setLastName(user.last_name);
+          if (user.profile_photo_url) setProfileImageUrl(user.profile_photo_url);
+          if (user.car_id) {
+            setCarId(user.car_id);
+            // Fetch car data
+            const carResponse = await fetch(`${API_BASE_URL}/api/cars/${user.car_id}`);
+            if (carResponse.ok) {
+              const car = await carResponse.json();
+              if (car.make && car.model) {
+                setCarMakeModel(`${car.year || ''} ${car.make} ${car.model}`.trim());
+              }
+              if (car.license_plate) setCarPlate(car.license_plate);
+              if (car.car_photo_url) setVehicleImageUrl(car.car_photo_url);
+            }
+          }
         }
       } catch (error) {
         console.error("Error fetching user:", error);
@@ -141,7 +159,8 @@ const ProfileView = () => {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/users/${userId}/username`, {
+      // Update username (for backward compatibility)
+      const usernameResponse = await fetch(`${API_BASE_URL}/api/users/${userId}/username`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -149,9 +168,31 @@ const ProfileView = () => {
         body: JSON.stringify({ username: editUsername.trim() }),
       });
 
-      if (response.ok) {
-        const updatedUser = await response.json();
-        setUsername(updatedUser.username);
+      // Update profile photo
+      const profilePhotoResponse = await fetch(`${API_BASE_URL}/api/users/${userId}/profile-photo`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ photoUrl: editProfileImageUrl.trim() || null }),
+      });
+
+      // Update car photo if car exists
+      let carPhotoSuccess = true;
+      if (carId) {
+        const carPhotoResponse = await fetch(`${API_BASE_URL}/api/cars/${carId}/photo`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ photoUrl: editVehicleImageUrl.trim() || null }),
+        });
+        carPhotoSuccess = carPhotoResponse.ok;
+      }
+
+      if (usernameResponse.ok && profilePhotoResponse.ok && carPhotoSuccess) {
+        const updatedUser = await usernameResponse.json();
+        setUsername(editUsername.trim());
         setFirstName(editFirstName.trim());
         setLastName(editLastName.trim());
         setCarMakeModel(editCarMakeModel.trim());
@@ -161,21 +202,21 @@ const ProfileView = () => {
         setIsEditOpen(false);
         toast({
           title: "Success",
-          description: "Username updated successfully",
+          description: "Profile updated successfully",
         });
       } else {
-        const error = await response.json();
+        const error = await usernameResponse.json().catch(() => ({ error: "Failed to update profile" }));
         toast({
           title: "Error",
-          description: error.error || "Failed to update username",
+          description: error.error || "Failed to update profile",
           variant: "destructive",
         });
       }
     } catch (error) {
-      console.error("Error updating username:", error);
+      console.error("Error updating profile:", error);
       toast({
         title: "Error",
-        description: "Failed to update username. Please try again.",
+        description: "Failed to update profile. Please try again.",
         variant: "destructive",
       });
     } finally {

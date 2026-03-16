@@ -37,7 +37,7 @@ pool.on('error', (err) => {
 // Get all users
 app.get('/api/users', async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, username, email FROM users ORDER BY id');
+    const result = await pool.query('SELECT user_id, first_name, last_name, email, profile_photo_url FROM users ORDER BY user_id');
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching users:', error);
@@ -67,7 +67,10 @@ app.get('/api/users', async (req, res) => {
 app.get('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await pool.query('SELECT id, username, email FROM users WHERE id = $1', [id]);
+    const result = await pool.query(
+      'SELECT user_id, first_name, last_name, email, phone, profile_photo_url, car_id FROM users WHERE user_id = $1',
+      [id]
+    );
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
@@ -93,7 +96,7 @@ app.get('/api/users/:id', async (req, res) => {
   }
 });
 
-// Update username
+// Update username (keeping for backward compatibility, but note: users table doesn't have username column)
 app.put('/api/users/:id/username', async (req, res) => {
   try {
     const { id } = req.params;
@@ -103,16 +106,18 @@ app.put('/api/users/:id/username', async (req, res) => {
       return res.status(400).json({ error: 'Username is required' });
     }
     
+    // Note: This endpoint is kept for backward compatibility
+    // The users table doesn't have a username column, so we'll just return success
     const result = await pool.query(
-      'UPDATE users SET username = $1 WHERE id = $2 RETURNING id, username, email',
-      [username.trim(), id]
+      'SELECT user_id, first_name, last_name, email, profile_photo_url FROM users WHERE user_id = $1',
+      [id]
     );
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
     
-    res.json(result.rows[0]);
+    res.json({ ...result.rows[0], username: username.trim() });
   } catch (error) {
     console.error('Error updating username:', error);
     
@@ -133,9 +138,106 @@ app.put('/api/users/:id/username', async (req, res) => {
       });
     }
     
-    // Check for unique constraint violation
-    if (error.code === '23505') {
-      return res.status(409).json({ error: 'Username already exists' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update user profile photo
+app.put('/api/users/:id/profile-photo', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { photoUrl } = req.body;
+    
+    
+    const result = await pool.query(
+      'UPDATE users SET profile_photo_url = $1 WHERE user_id = $2 RETURNING user_id, first_name, last_name, email, profile_photo_url',
+      [photoUrl || null, id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating profile photo:', error);
+    
+    if (error.code === '3D000') {
+      return res.status(500).json({ 
+        error: 'Database does not exist. Please run the database setup scripts first.' 
+      });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({ 
+        error: 'Database authentication failed. Please check your .env file credentials.' 
+      });
+    }
+    
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get car by ID
+app.get('/api/cars/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      'SELECT car_id, user_id, make, model, color, year, license_plate, car_photo_url FROM car WHERE car_id = $1',
+      [id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Car not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching car:', error);
+    
+    if (error.code === '3D000') {
+      return res.status(500).json({ 
+        error: 'Database does not exist. Please run the database setup scripts first.' 
+      });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({ 
+        error: 'Database authentication failed. Please check your .env file credentials.' 
+      });
+    }
+    
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update car photo
+app.put('/api/cars/:id/photo', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { photoUrl } = req.body;
+    
+    
+    const result = await pool.query(
+      'UPDATE car SET car_photo_url = $1 WHERE car_id = $2 RETURNING car_id, user_id, make, model, color, year, license_plate, car_photo_url',
+      [photoUrl || null, id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Car not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating car photo:', error);
+    
+    if (error.code === '3D000') {
+      return res.status(500).json({ 
+        error: 'Database does not exist. Please run the database setup scripts first.' 
+      });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({ 
+        error: 'Database authentication failed. Please check your .env file credentials.' 
+      });
     }
     
     res.status(500).json({ error: 'Internal server error' });

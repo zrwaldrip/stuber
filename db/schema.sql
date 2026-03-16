@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS public.car (
     model character varying(100) NOT NULL,
     color character varying(50),
     year integer,
-    license_plate character varying(20) NOT NULL
+    license_plate character varying(20) NOT NULL,
+    car_photo_url text
 );
 
 
@@ -287,7 +288,7 @@ CREATE TABLE IF NOT EXISTS public.users (
     last_name character varying(100) NOT NULL,
     email character varying(255) NOT NULL,
     phone integer NOT NULL,
-    profile_photo_url character varying(255),
+    profile_photo_url text,
     car_id integer,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
