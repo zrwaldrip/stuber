@@ -37,7 +37,7 @@ pool.on('error', (err) => {
 // Get all users
 app.get('/api/users', async (req, res) => {
   try {
-    const result = await pool.query('SELECT user_id, first_name, last_name, email, profile_photo_url FROM users ORDER BY user_id');
+    const result = await pool.query('SELECT user_id, first_name, last_name, username, email, profile_photo_url FROM users ORDER BY user_id');
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching users:', error);
@@ -68,7 +68,7 @@ app.get('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
-      'SELECT user_id, first_name, last_name, email, phone, profile_photo_url, car_id FROM users WHERE user_id = $1',
+      'SELECT user_id, first_name, last_name, username, email, phone, profile_photo_url, car_id FROM users WHERE user_id = $1',
       [id]
     );
     
@@ -96,7 +96,54 @@ app.get('/api/users/:id', async (req, res) => {
   }
 });
 
-// Update username (keeping for backward compatibility, but note: users table doesn't have username column)
+// Update user details (first name, last name, username, phone)
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { firstName, lastName, username, phone } = req.body;
+
+    const result = await pool.query(
+      `UPDATE users
+       SET
+         first_name = COALESCE($1, first_name),
+         last_name  = COALESCE($2, last_name),
+         username   = COALESCE($3, username),
+         phone      = COALESCE($4, phone)
+       WHERE user_id = $5
+       RETURNING user_id, first_name, last_name, username, email, phone, profile_photo_url, car_id`,
+      [
+        firstName ?? null,
+        lastName ?? null,
+        username ?? null,
+        phone ?? null,
+        id,
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating user:', error);
+
+    if (error.code === '3D000') {
+      return res.status(500).json({
+        error: 'Database does not exist. Please run the database setup scripts first.',
+      });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({
+        error: 'Database authentication failed. Please check your .env file credentials.',
+      });
+    }
+
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update username (kept for backward compatibility; now updates the username column)
 app.put('/api/users/:id/username', async (req, res) => {
   try {
     const { id } = req.params;
@@ -106,18 +153,19 @@ app.put('/api/users/:id/username', async (req, res) => {
       return res.status(400).json({ error: 'Username is required' });
     }
     
-    // Note: This endpoint is kept for backward compatibility
-    // The users table doesn't have a username column, so we'll just return success
     const result = await pool.query(
-      'SELECT user_id, first_name, last_name, email, profile_photo_url FROM users WHERE user_id = $1',
-      [id]
+      `UPDATE users
+       SET username = $1
+       WHERE user_id = $2
+       RETURNING user_id, first_name, last_name, username, email, profile_photo_url`,
+      [username.trim(), id]
     );
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
     
-    res.json({ ...result.rows[0], username: username.trim() });
+    res.json(result.rows[0]);
   } catch (error) {
     console.error('Error updating username:', error);
     
@@ -205,6 +253,55 @@ app.get('/api/cars/:id', async (req, res) => {
       });
     }
     
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update car details (make, model, year, color, license plate)
+app.put('/api/cars/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { make, model, year, color, licensePlate } = req.body;
+
+    const result = await pool.query(
+      `UPDATE car
+       SET
+         make          = COALESCE($1, make),
+         model         = COALESCE($2, model),
+         year          = COALESCE($3, year),
+         color         = COALESCE($4, color),
+         license_plate = COALESCE($5, license_plate)
+       WHERE car_id = $6
+       RETURNING car_id, user_id, make, model, color, year, license_plate, car_photo_url`,
+      [
+        make ?? null,
+        model ?? null,
+        year ?? null,
+        color ?? null,
+        licensePlate ?? null,
+        id,
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Car not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating car:', error);
+
+    if (error.code === '3D000') {
+      return res.status(500).json({
+        error: 'Database does not exist. Please run the database setup scripts first.',
+      });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({
+        error: 'Database authentication failed. Please check your .env file credentials.',
+      });
+    }
+
     res.status(500).json({ error: 'Internal server error' });
   }
 });

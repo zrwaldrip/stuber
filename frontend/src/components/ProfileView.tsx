@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
-import { useCallback } from "react";
-import { BadgeCheck, MapPin, Car, Star, Shield, Award, Route, Upload, X } from "lucide-react";
+import { BadgeCheck, MapPin, Car, Star, Shield, Award, Route } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,6 +22,34 @@ import carInterior from "@/assets/car-interior.jpg";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
+const parseCarMakeModel = (input: string) => {
+  const parts = input.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return { year: null as number | null, make: null as string | null, model: null as string | null };
+  }
+
+  let year: number | null = null;
+  let startIndex = 0;
+
+  const maybeYear = parseInt(parts[0], 10);
+  if (!Number.isNaN(maybeYear) && parts[0].length === 4) {
+    year = maybeYear;
+    startIndex = 1;
+  }
+
+  let make: string | null = null;
+  let model: string | null = null;
+
+  if (parts.length - startIndex >= 1) {
+    make = parts[startIndex];
+  }
+  if (parts.length - startIndex >= 2) {
+    model = parts.slice(startIndex + 1).join(" ");
+  }
+
+  return { year, make, model };
+};
+
 const ProfileView = () => {
   const [firstName, setFirstName] = useState("Marcus");
   const [lastName, setLastName] = useState("Rivera");
@@ -41,64 +68,8 @@ const ProfileView = () => {
   const [editCarPlate, setEditCarPlate] = useState(carPlate);
   const [editProfileImageUrl, setEditProfileImageUrl] = useState(profileImageUrl);
   const [editVehicleImageUrl, setEditVehicleImageUrl] = useState(vehicleImageUrl);
-  const [profileImageDragOver, setProfileImageDragOver] = useState(false);
-  const [vehicleImageDragOver, setVehicleImageDragOver] = useState(false);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-
-  const readProfileImageFile = useCallback((file: File) => {
-    if (!file.type.startsWith("image/")) {
-      toast({
-        title: "Invalid file",
-        description: "Please choose an image file (e.g. JPG, PNG)",
-        variant: "destructive",
-      });
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => setEditProfileImageUrl(reader.result as string);
-    reader.readAsDataURL(file);
-  }, [toast]);
-
-  const readVehicleImageFile = useCallback((file: File) => {
-    if (!file.type.startsWith("image/")) {
-      toast({
-        title: "Invalid file",
-        description: "Please choose an image file (e.g. JPG, PNG)",
-        variant: "destructive",
-      });
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => setEditVehicleImageUrl(reader.result as string);
-    reader.readAsDataURL(file);
-  }, [toast]);
-
-  const handleProfileImageDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setProfileImageDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) readProfileImageFile(file);
-  }, [readProfileImageFile]);
-
-  const handleProfileImageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) readProfileImageFile(file);
-    e.target.value = "";
-  }, [readProfileImageFile]);
-
-  const handleVehicleImageDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setVehicleImageDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) readVehicleImageFile(file);
-  }, [readVehicleImageFile]);
-
-  const handleVehicleImageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) readVehicleImageFile(file);
-    e.target.value = "";
-  }, [readVehicleImageFile]);
   const userId = 1; // Default user ID - in a real app, this would come from auth context
 
   useEffect(() => {
@@ -108,12 +79,9 @@ const ProfileView = () => {
         const response = await fetch(`${API_BASE_URL}/api/users/${userId}`);
         if (response.ok) {
           const user = await response.json();
-          // Note: backend doesn't have username, so we'll construct one from first_name
-          if (user.first_name) {
-            setFirstName(user.first_name);
-            setUsername(user.first_name.toLowerCase().replace(/\s+/g, ''));
-          }
+          if (user.first_name) setFirstName(user.first_name);
           if (user.last_name) setLastName(user.last_name);
+          if (user.username) setUsername(user.username);
           if (user.profile_photo_url) setProfileImageUrl(user.profile_photo_url);
           if (user.car_id) {
             setCarId(user.car_id);
@@ -159,13 +127,17 @@ const ProfileView = () => {
 
     setLoading(true);
     try {
-      // Update username (for backward compatibility)
-      const usernameResponse = await fetch(`${API_BASE_URL}/api/users/${userId}/username`, {
+      // Update user details in the database (including username)
+      const userResponse = await fetch(`${API_BASE_URL}/api/users/${userId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ username: editUsername.trim() }),
+        body: JSON.stringify({
+          firstName: editFirstName.trim() || null,
+          lastName: editLastName.trim() || null,
+          username: editUsername.trim() || null,
+        }),
       });
 
       // Update profile photo
@@ -177,9 +149,25 @@ const ProfileView = () => {
         body: JSON.stringify({ photoUrl: editProfileImageUrl.trim() || null }),
       });
 
-      // Update car photo if car exists
+      // Update car details and photo if car exists
       let carPhotoSuccess = true;
+      let carDetailsSuccess = true;
       if (carId) {
+        const { year, make, model } = parseCarMakeModel(editCarMakeModel);
+        const carDetailsResponse = await fetch(`${API_BASE_URL}/api/cars/${carId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            year,
+            make,
+            model,
+            licensePlate: editCarPlate.trim() || null,
+          }),
+        });
+        carDetailsSuccess = carDetailsResponse.ok;
+
         const carPhotoResponse = await fetch(`${API_BASE_URL}/api/cars/${carId}/photo`, {
           method: "PUT",
           headers: {
@@ -190,8 +178,7 @@ const ProfileView = () => {
         carPhotoSuccess = carPhotoResponse.ok;
       }
 
-      if (usernameResponse.ok && profilePhotoResponse.ok && carPhotoSuccess) {
-        const updatedUser = await usernameResponse.json();
+      if (userResponse.ok && profilePhotoResponse.ok && carPhotoSuccess && carDetailsSuccess) {
         setUsername(editUsername.trim());
         setFirstName(editFirstName.trim());
         setLastName(editLastName.trim());
@@ -205,10 +192,9 @@ const ProfileView = () => {
           description: "Profile updated successfully",
         });
       } else {
-        const error = await usernameResponse.json().catch(() => ({ error: "Failed to update profile" }));
         toast({
           title: "Error",
-          description: error.error || "Failed to update profile",
+          description: "Failed to update profile",
           variant: "destructive",
         });
       }
@@ -332,51 +318,26 @@ const ProfileView = () => {
             <DialogDescription>Update your personal and vehicle information.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            {/* Profile picture first */}
+            {/* Profile picture (URL-based) */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-foreground">Profile picture</label>
-              <div
-                onDragOver={(e) => { e.preventDefault(); setProfileImageDragOver(true); }}
-                onDragLeave={() => setProfileImageDragOver(false)}
-                onDrop={handleProfileImageDrop}
-                className={`relative flex min-h-[100px] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-4 transition-colors ${profileImageDragOver ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-muted-foreground/50"}`}
-                onClick={() => document.getElementById("profile-image-input")?.click()}
-              >
-                <input
-                  id="profile-image-input"
-                  type="file"
-                  accept="image/*"
-                  className="sr-only"
-                  disabled={loading}
-                  onChange={handleProfileImageChange}
+              <div className="flex items-center gap-3">
+                <img
+                  src={editProfileImageUrl || profileImageUrl || profilePhoto}
+                  alt="Profile preview"
+                  className="h-14 w-14 rounded-full object-cover border border-border"
                 />
-                {editProfileImageUrl ? (
-                  <>
-                    <img
-                      src={editProfileImageUrl}
-                      alt="Profile preview"
-                      className="h-16 w-16 rounded-full object-cover"
-                    />
-                    <span className="text-xs text-muted-foreground">Drop a new image or click to replace</span>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="absolute right-2 top-2 h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                      onClick={(e) => { e.stopPropagation(); setEditProfileImageUrl(""); }}
-                      disabled={loading}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-8 w-8 text-muted-foreground" />
-                    <span className="text-center text-sm text-muted-foreground">
-                      Drop image here or click to browse
-                    </span>
-                  </>
-                )}
+                <div className="flex-1 space-y-1">
+                  <Input
+                    value={editProfileImageUrl}
+                    onChange={(e) => setEditProfileImageUrl(e.target.value)}
+                    placeholder="https://example.com/profile.jpg"
+                    disabled={loading}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Enter a public image URL for your profile photo.
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -431,51 +392,26 @@ const ProfileView = () => {
               />
             </div>
 
-            {/* Vehicle image */}
+            {/* Vehicle image (URL-based) */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-foreground">Vehicle photo</label>
-              <div
-                onDragOver={(e) => { e.preventDefault(); setVehicleImageDragOver(true); }}
-                onDragLeave={() => setVehicleImageDragOver(false)}
-                onDrop={handleVehicleImageDrop}
-                className={`relative flex min-h-[120px] cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-4 transition-colors ${vehicleImageDragOver ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-muted-foreground/50"}`}
-                onClick={() => document.getElementById("vehicle-image-input")?.click()}
-              >
-                <input
-                  id="vehicle-image-input"
-                  type="file"
-                  accept="image/*"
-                  className="sr-only"
-                  disabled={loading}
-                  onChange={handleVehicleImageChange}
+              <div className="flex items-center gap-3">
+                <img
+                  src={editVehicleImageUrl || vehicleImageUrl || carExterior}
+                  alt="Vehicle preview"
+                  className="h-16 w-24 rounded-md object-cover border border-border"
                 />
-                {editVehicleImageUrl ? (
-                  <>
-                    <img
-                      src={editVehicleImageUrl}
-                      alt="Vehicle preview"
-                      className="h-20 w-full rounded-md object-cover"
-                    />
-                    <span className="text-xs text-muted-foreground">Drop a new image or click to replace</span>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="absolute right-2 top-2 h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                      onClick={(e) => { e.stopPropagation(); setEditVehicleImageUrl(""); }}
-                      disabled={loading}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-8 w-8 text-muted-foreground" />
-                    <span className="text-center text-sm text-muted-foreground">
-                      Drop vehicle photo here or click to browse
-                    </span>
-                  </>
-                )}
+                <div className="flex-1 space-y-1">
+                  <Input
+                    value={editVehicleImageUrl}
+                    onChange={(e) => setEditVehicleImageUrl(e.target.value)}
+                    placeholder="https://example.com/vehicle.jpg"
+                    disabled={loading}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Enter a public image URL for your vehicle photo.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
