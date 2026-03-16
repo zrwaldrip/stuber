@@ -38,6 +38,8 @@ Navigate to the project root and install packages for both the frontend and back
 
 Ensure your PostgreSQL server is active. Run these three commands in order to create and populate your database:
 
+0. **Reset Database:** `psql -U postgres -c "DROP DATABASE IF EXISTS stuber;"`
+
 1. **Create Database:** `psql -U postgres -c "CREATE DATABASE stuber;"`
 2. **Run Schema:** `psql -U postgres -d stuber -f db/schema.sql`
 3. **Run Seed Data:** `psql -U postgres -d stuber -f db/seed.sql`
