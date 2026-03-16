@@ -1,14 +1,15 @@
 import { useState, useMemo } from "react";
-import { MapPin, Clock, Loader2, Minus, Plus, CalendarIcon, Sparkles } from "lucide-react";
+import { Clock, Loader2, Minus, Plus, CalendarIcon, Sparkles, RepeatIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { useAppState, LOCATIONS } from "@/store/AppContext";
+import { useAppState, LOCATIONS, DAY_NAMES } from "@/store/AppContext";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 
 interface PostRideViewProps {
   onComplete: () => void;
@@ -23,8 +24,18 @@ const POPULAR_LOCATIONS = [
   "The Village",
 ];
 
+const WEEKDAYS = [
+  { label: "Sun", value: 0 },
+  { label: "Mon", value: 1 },
+  { label: "Tue", value: 2 },
+  { label: "Wed", value: 3 },
+  { label: "Thu", value: 4 },
+  { label: "Fri", value: 5 },
+  { label: "Sat", value: 6 },
+];
+
 const PostRideView = ({ onComplete }: PostRideViewProps) => {
-  const { addRide } = useAppState();
+  const { addRide, addRecurringRide } = useAppState();
   const [departure, setDeparture] = useState("");
   const [destination, setDestination] = useState("");
   const [date, setDate] = useState<Date | undefined>(new Date());
@@ -36,6 +47,8 @@ const PostRideView = ({ onComplete }: PostRideViewProps) => {
   const [loading, setLoading] = useState(false);
   const [depFocused, setDepFocused] = useState(false);
   const [destFocused, setDestFocused] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [selectedDays, setSelectedDays] = useState<number[]>([]);
 
   const depSuggestions = useMemo(() => {
     if (!depFocused || departure.length === 0) return POPULAR_LOCATIONS.slice(0, 4);
@@ -49,27 +62,54 @@ const PostRideView = ({ onComplete }: PostRideViewProps) => {
     return LOCATIONS.filter((l) => l.name.toLowerCase().includes(q)).map((l) => l.name).slice(0, 4);
   }, [destination, destFocused, departure]);
 
+  const toggleDay = (day: number) => {
+    setSelectedDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
+    );
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    if (isRecurring && selectedDays.length === 0) {
+      toast.error("Select at least one day", { description: "Choose which days this ride repeats." });
+      return;
+    }
 
+    setLoading(true);
     const fromLoc = LOCATIONS.find((l) => l.name.toLowerCase() === departure.toLowerCase());
     const toLoc = LOCATIONS.find((l) => l.name.toLowerCase() === destination.toLowerCase());
+    const formattedTime = format(new Date(`2026-01-01T${time}`), "h:mm a");
 
     setTimeout(() => {
-      addRide({
-        driverId: "d-3",
-        fromLocationId: fromLoc?.id ?? "loc-5",
-        toLocationId: toLoc?.id ?? "loc-6",
-        departureTime: format(new Date(`2026-01-01T${time}`), "h:mm a"),
-        date: date ? format(date, "yyyy-MM-dd") : "2026-02-10",
-        totalSeats: seats,
-        availableSeats: seats,
-      });
+      if (isRecurring) {
+        selectedDays.sort().forEach((day) => {
+          addRecurringRide({
+            driverId: "d-3",
+            fromLocationId: fromLoc?.id ?? "loc-5",
+            toLocationId: toLoc?.id ?? "loc-6",
+            departureTime: formattedTime,
+            dayOfWeek: day,
+            totalSeats: seats,
+            availableSeats: seats,
+          });
+        });
+        const dayLabels = selectedDays.sort().map((d) => DAY_NAMES[d]).join(", ");
+        toast.success("Recurring ride posted!", {
+          description: `${departure} → ${destination} every ${dayLabels} at ${formattedTime}`,
+        });
+      } else {
+        addRide({
+          driverId: "d-3",
+          fromLocationId: fromLoc?.id ?? "loc-5",
+          toLocationId: toLoc?.id ?? "loc-6",
+          departureTime: formattedTime,
+          date: date ? format(date, "yyyy-MM-dd") : "2026-02-10",
+          totalSeats: seats,
+          availableSeats: seats,
+        });
+        toast.success("Ride posted successfully!", { description: `${departure} → ${destination}` });
+      }
       setLoading(false);
-      toast.success("Ride posted successfully!", {
-        description: `${departure} → ${destination}`,
-      });
       onComplete();
     }, 1500);
   };
@@ -136,18 +176,52 @@ const PostRideView = ({ onComplete }: PostRideViewProps) => {
           )}
         </div>
 
-        {/* Date & Time */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Recurring toggle */}
+        <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <RepeatIcon className="h-4 w-4 text-primary" />
+            <div>
+              <p className="text-sm font-medium text-foreground">Recurring Ride</p>
+              <p className="text-xs text-muted-foreground">Repeats weekly — riders can subscribe</p>
+            </div>
+          </div>
+          <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
+        </div>
+
+        {/* Day picker (recurring only) */}
+        {isRecurring ? (
+          <div className="space-y-2 animate-fade-in">
+            <Label className="text-sm font-medium text-foreground">Repeats on</Label>
+            <div className="flex gap-1.5">
+              {WEEKDAYS.map((day) => {
+                const active = selectedDays.includes(day.value);
+                return (
+                  <button
+                    key={day.value}
+                    type="button"
+                    onClick={() => toggleDay(day.value)}
+                    className={cn(
+                      "flex-1 rounded-lg border py-2 text-xs font-medium transition-colors",
+                      active
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
+                    )}
+                  >
+                    {day.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          /* Date picker (one-time only) */
           <div className="space-y-2">
             <Label className="text-sm font-medium text-foreground">Date</Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !date && "text-muted-foreground"
-                  )}
+                  className={cn("w-full justify-start text-left font-normal", !date && "text-muted-foreground")}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {date ? format(date, "MMM d, yyyy") : "Pick a date"}
@@ -165,18 +239,20 @@ const PostRideView = ({ onComplete }: PostRideViewProps) => {
               </PopoverContent>
             </Popover>
           </div>
-          <div className="space-y-2">
-            <Label className="text-sm font-medium text-foreground">Time</Label>
-            <div className="relative">
-              <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="time"
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                className="pl-10"
-                required
-              />
-            </div>
+        )}
+
+        {/* Time */}
+        <div className="space-y-2">
+          <Label className="text-sm font-medium text-foreground">Departure Time</Label>
+          <div className="relative">
+            <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="time"
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+              className="pl-10"
+              required
+            />
           </div>
         </div>
 
@@ -213,17 +289,12 @@ const PostRideView = ({ onComplete }: PostRideViewProps) => {
 
         {/* Buttons */}
         <div className="flex gap-3 pt-4">
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1"
-            onClick={onComplete}
-          >
+          <Button type="button" variant="outline" className="flex-1" onClick={onComplete}>
             Cancel
           </Button>
           <Button type="submit" className="flex-[2]" disabled={loading}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            {loading ? "Posting Ride…" : "Post Ride"}
+            {loading ? "Posting…" : isRecurring ? "Post Recurring Ride" : "Post Ride"}
           </Button>
         </div>
       </form>

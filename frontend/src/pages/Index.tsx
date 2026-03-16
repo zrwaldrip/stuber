@@ -3,6 +3,7 @@ import LoginView from "@/components/LoginView";
 import ProfileView from "@/components/ProfileView";
 import RidesView from "@/components/RidesView";
 import PostRideView from "@/components/PostRideView";
+import MyRidesView from "@/components/MyRidesView";
 import AppHeader, { type View } from "@/components/AppHeader";
 import BottomNav from "@/components/BottomNav";
 import { AppProvider } from "@/store/AppContext";
@@ -34,6 +35,7 @@ const AppContent = () => {
         {currentView === "profile" && <ProfileView />}
         {currentView === "rides" && <RidesView />}
         {currentView === "post" && <PostRideView onComplete={() => setCurrentView("rides")} />}
+        {currentView === "my-rides" && <MyRidesView />}
       </main>
       {isLoggedIn && <BottomNav currentView={currentView} onNavigate={setCurrentView} />}
     </div>

@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { Menu, X, User, MapPin, PlusCircle, LogOut, Radio } from "lucide-react";
+import { Menu, X, User, MapPin, PlusCircle, LogOut, Radio, BookMarked } from "lucide-react";
 import Logo from "./Logo";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAppState } from "@/store/AppContext";
 import { toast } from "sonner";
 
-export type View = "login" | "profile" | "rides" | "post";
+export type View = "login" | "profile" | "rides" | "post" | "my-rides";
 
 interface AppHeaderProps {
   currentView: View;
@@ -21,6 +21,7 @@ const AppHeader = ({ currentView, onNavigate, isLoggedIn, onLogout }: AppHeaderP
   const navItems = [
     { label: "My Account", icon: User, view: "profile" as View },
     { label: "Find a Ride", icon: MapPin, view: "rides" as View },
+    { label: "My Rides", icon: BookMarked, view: "my-rides" as View },
     { label: "Post a Ride", icon: PlusCircle, view: "post" as View },
   ];
 

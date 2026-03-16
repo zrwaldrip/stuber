@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 
-// ── Types matching ERD ─────────────────────────────────────────────
+// ── Types ───────────────────────────────────────────────────────────
 export interface Location {
   id: string;
   name: string;
@@ -42,7 +42,28 @@ export interface Booking {
   timestamp: number;
 }
 
-// ── Seed Data ──────────────────────────────────────────────────────
+export interface RecurringRide {
+  id: string;
+  driverId: string;
+  fromLocationId: string;
+  toLocationId: string;
+  departureTime: string;
+  dayOfWeek: number; // 0=Sun, 1=Mon … 6=Sat
+  totalSeats: number;
+  availableSeats: number;
+  status: "active" | "cancelled";
+}
+
+export interface RideSubscription {
+  id: string;
+  recurringRideId: string;
+  riderName?: string; // set for other riders shown in driver's view
+  missedCount: number;
+  subscribedAt: number;
+  status: "active" | "cancelled";
+}
+
+// ── Seed Data ───────────────────────────────────────────────────────
 export const LOCATIONS: Location[] = [
   { id: "loc-1", name: "The Village", type: "residential" },
   { id: "loc-2", name: "RB Parking Lot", type: "campus" },
@@ -82,15 +103,58 @@ const INITIAL_RIDES: RideOffer[] = [
   { id: 9, driverId: "d-3", fromLocationId: "loc-13", toLocationId: "loc-5", departureTime: "1:00 PM", date: "2026-02-10", totalSeats: 4, availableSeats: 3 },
 ];
 
-// ── Context ────────────────────────────────────────────────────────
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// Recurring rides seeded across multiple drivers
+// Note: rr-5 belongs to d-3 (James Lewis) = current user acting as driver
+const INITIAL_RECURRING_RIDES: RecurringRide[] = [
+  // Alex Martinez — Heritage Halls → Tanner, Mon & Wed 9:00 AM
+  { id: "rr-1", driverId: "d-1", fromLocationId: "loc-10", toLocationId: "loc-4", departureTime: "9:00 AM", dayOfWeek: 1, totalSeats: 4, availableSeats: 3, status: "active" },
+  { id: "rr-2", driverId: "d-1", fromLocationId: "loc-10", toLocationId: "loc-4", departureTime: "9:00 AM", dayOfWeek: 3, totalSeats: 4, availableSeats: 4, status: "active" },
+  // Sarah Kim — The Village → Tanner, Tue & Thu 8:30 AM
+  { id: "rr-3", driverId: "d-2", fromLocationId: "loc-1", toLocationId: "loc-4", departureTime: "8:30 AM", dayOfWeek: 2, totalSeats: 4, availableSeats: 2, status: "active" },
+  { id: "rr-4", driverId: "d-2", fromLocationId: "loc-1", toLocationId: "loc-4", departureTime: "8:30 AM", dayOfWeek: 4, totalSeats: 4, availableSeats: 3, status: "active" },
+  // James Lewis (current user as driver) — Helaman Halls → Campus Plaza, Mon 7:45 AM
+  { id: "rr-5", driverId: "d-3", fromLocationId: "loc-13", toLocationId: "loc-5", departureTime: "7:45 AM", dayOfWeek: 1, totalSeats: 4, availableSeats: 2, status: "active" },
+  // Rachel Torres — Heritage Halls → Wilkinson, Fri 10:00 AM
+  { id: "rr-6", driverId: "d-6", fromLocationId: "loc-10", toLocationId: "loc-14", departureTime: "10:00 AM", dayOfWeek: 5, totalSeats: 4, availableSeats: 3, status: "active" },
+];
+
+// Current user's subscriptions as a rider (pre-seeded: subscribed to rr-1 with 1 miss)
+const INITIAL_MY_SUBSCRIPTIONS: RideSubscription[] = [
+  { id: "sub-1", recurringRideId: "rr-1", missedCount: 1, subscribedAt: Date.now() - 14 * 24 * 60 * 60 * 1000, status: "active" },
+];
+
+// Other riders subscribed to the current user's posted ride (rr-5 / James Lewis)
+// Used for driver no-show management
+const INITIAL_RIDER_SUBSCRIPTIONS: RideSubscription[] = [
+  { id: "rsub-1", recurringRideId: "rr-5", riderName: "Tyler Brooks", missedCount: 0, subscribedAt: Date.now() - 21 * 24 * 60 * 60 * 1000, status: "active" },
+  { id: "rsub-2", recurringRideId: "rr-5", riderName: "Emma Walsh", missedCount: 2, subscribedAt: Date.now() - 30 * 24 * 60 * 60 * 1000, status: "active" },
+];
+
+export { DAY_NAMES };
+
+// ── Context ─────────────────────────────────────────────────────────
 interface AppState {
+  // One-time rides
   rides: RideOffer[];
   bookings: Map<number, Booking>;
   bookRide: (rideId: number) => void;
   confirmBooking: (rideId: number) => void;
   addRide: (ride: Omit<RideOffer, "id">) => void;
+  // Recurring rides
+  recurringRides: RecurringRide[];
+  mySubscriptions: RideSubscription[];
+  riderSubscriptions: RideSubscription[]; // other riders on driver's rides
+  addRecurringRide: (ride: Omit<RecurringRide, "id" | "status">) => void;
+  subscribeToRecurring: (recurringRideId: string) => void;
+  unsubscribeFromRecurring: (subscriptionId: string) => void;
+  isSubscribedToRecurring: (recurringRideId: string) => boolean;
+  markRiderNoShow: (riderSubscriptionId: string) => void;
+  // Helpers
   getDriver: (id: string) => Driver | undefined;
   getLocation: (id: string) => Location | undefined;
+  getRecurringRide: (id: string) => RecurringRide | undefined;
   liveRideCount: number;
 }
 
@@ -105,15 +169,17 @@ export const useAppState = () => {
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [rides, setRides] = useState<RideOffer[]>(INITIAL_RIDES);
   const [bookings, setBookings] = useState<Map<number, Booking>>(new Map());
+  const [recurringRides, setRecurringRides] = useState<RecurringRide[]>(INITIAL_RECURRING_RIDES);
+  const [mySubscriptions, setMySubscriptions] = useState<RideSubscription[]>(INITIAL_MY_SUBSCRIPTIONS);
+  const [riderSubscriptions, setRiderSubscriptions] = useState<RideSubscription[]>(INITIAL_RIDER_SUBSCRIPTIONS);
 
+  // ── One-time ride booking ──────────────────────────────────────────
   const bookRide = useCallback((rideId: number) => {
-    // Set to pending first
     setBookings((prev) => {
       const next = new Map(prev);
       next.set(rideId, { rideId, status: "pending", timestamp: Date.now() });
       return next;
     });
-    // Auto-confirm after 2s and decrement seat
     setTimeout(() => {
       setBookings((prev) => {
         const next = new Map(prev);
@@ -144,13 +210,72 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setRides((prev) => [...prev, { ...ride, id: Date.now() }]);
   }, []);
 
+  // ── Recurring rides ───────────────────────────────────────────────
+  const addRecurringRide = useCallback((ride: Omit<RecurringRide, "id" | "status">) => {
+    setRecurringRides((prev) => [...prev, { ...ride, id: `rr-${Date.now()}`, status: "active" }]);
+  }, []);
+
+  const subscribeToRecurring = useCallback((recurringRideId: string) => {
+    setMySubscriptions((prev) => {
+      if (prev.some((s) => s.recurringRideId === recurringRideId && s.status === "active")) return prev;
+      return [...prev, { id: `sub-${Date.now()}`, recurringRideId, missedCount: 0, subscribedAt: Date.now(), status: "active" }];
+    });
+    // Decrement available seat on the recurring ride
+    setRecurringRides((prev) =>
+      prev.map((r) => r.id === recurringRideId && r.availableSeats > 0 ? { ...r, availableSeats: r.availableSeats - 1 } : r)
+    );
+  }, []);
+
+  const unsubscribeFromRecurring = useCallback((subscriptionId: string) => {
+    setMySubscriptions((prev) => {
+      const sub = prev.find((s) => s.id === subscriptionId);
+      if (!sub) return prev;
+      // Return seat
+      setRecurringRides((rides) =>
+        rides.map((r) => r.id === sub.recurringRideId ? { ...r, availableSeats: r.availableSeats + 1 } : r)
+      );
+      return prev.filter((s) => s.id !== subscriptionId);
+    });
+  }, []);
+
+  const isSubscribedToRecurring = useCallback(
+    (recurringRideId: string) => mySubscriptions.some((s) => s.recurringRideId === recurringRideId && s.status === "active"),
+    [mySubscriptions]
+  );
+
+  // Driver marks a rider as a no-show — auto-cancels at 3 misses
+  const markRiderNoShow = useCallback((riderSubscriptionId: string) => {
+    setRiderSubscriptions((prev) =>
+      prev.map((s) => {
+        if (s.id !== riderSubscriptionId) return s;
+        const newCount = s.missedCount + 1;
+        if (newCount >= 3) {
+          // Return the seat back to the recurring ride
+          setRecurringRides((rides) =>
+            rides.map((r) => r.id === s.recurringRideId ? { ...r, availableSeats: r.availableSeats + 1 } : r)
+          );
+          return { ...s, missedCount: newCount, status: "cancelled" };
+        }
+        return { ...s, missedCount: newCount };
+      })
+    );
+  }, []);
+
+  // ── Helpers ────────────────────────────────────────────────────────
   const getDriver = useCallback((id: string) => DRIVERS.find((d) => d.id === id), []);
   const getLocation = useCallback((id: string) => LOCATIONS.find((l) => l.id === id), []);
+  const getRecurringRide = useCallback((id: string) => recurringRides.find((r) => r.id === id), [recurringRides]);
 
   const liveRideCount = rides.filter((r) => r.availableSeats > 0).length;
 
   return (
-    <AppContext.Provider value={{ rides, bookings, bookRide, confirmBooking, addRide, getDriver, getLocation, liveRideCount }}>
+    <AppContext.Provider value={{
+      rides, bookings, bookRide, confirmBooking, addRide,
+      recurringRides, mySubscriptions, riderSubscriptions,
+      addRecurringRide, subscribeToRecurring, unsubscribeFromRecurring,
+      isSubscribedToRecurring, markRiderNoShow,
+      getDriver, getLocation, getRecurringRide, liveRideCount,
+    }}>
       {children}
     </AppContext.Provider>
   );

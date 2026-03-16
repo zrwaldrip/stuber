@@ -1,14 +1,14 @@
 import { useState, useMemo } from "react";
 import {
   MapPin, Clock, ArrowRight, Check, User, Star, Car,
-  Search, SlidersHorizontal, ChevronDown, Loader2,
-  Users, Shield,
+  Search, SlidersHorizontal, Loader2,
+  Users, Shield, Bell, BellOff, RepeatIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { useAppState, type BookingStatus } from "@/store/AppContext";
+import { useAppState, type BookingStatus, DAY_NAMES } from "@/store/AppContext";
 import {
   Select,
   SelectContent,
@@ -25,11 +25,16 @@ import {
 type SortMode = "time" | "seats" | "rating";
 
 const RidesView = () => {
-  const { rides, bookings, bookRide, getDriver, getLocation } = useAppState();
+  const {
+    rides, bookings, bookRide,
+    recurringRides, isSubscribedToRecurring, subscribeToRecurring, unsubscribeFromRecurring, mySubscriptions,
+    getDriver, getLocation,
+  } = useAppState();
   const [searchQuery, setSearchQuery] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("time");
   const [showFilters, setShowFilters] = useState(false);
 
+  // ── One-time rides ────────────────────────────────────────────────
   const filteredRides = useMemo(() => {
     let result = rides.filter((r) => r.availableSeats > 0 || bookings.has(r.id));
 
@@ -56,20 +61,51 @@ const RidesView = () => {
     return result;
   }, [rides, searchQuery, sortMode, bookings, getDriver, getLocation]);
 
+  // ── Recurring rides ───────────────────────────────────────────────
+  const filteredRecurring = useMemo(() => {
+    let result = recurringRides.filter((r) => r.status === "active" && (r.availableSeats > 0 || isSubscribedToRecurring(r.id)));
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter((r) => {
+        const from = getLocation(r.fromLocationId)?.name.toLowerCase() ?? "";
+        const to = getLocation(r.toLocationId)?.name.toLowerCase() ?? "";
+        const driver = getDriver(r.driverId)?.name.toLowerCase() ?? "";
+        return from.includes(q) || to.includes(q) || driver.includes(q);
+      });
+    }
+
+    return result;
+  }, [recurringRides, searchQuery, isSubscribedToRecurring, getDriver, getLocation]);
+
+  // ── Handlers ──────────────────────────────────────────────────────
   const handleBook = (rideId: number) => {
     bookRide(rideId);
     const ride = rides.find((r) => r.id === rideId);
     const from = getLocation(ride?.fromLocationId ?? "")?.name;
     const to = getLocation(ride?.toLocationId ?? "")?.name;
-    toast.info("Booking requested", {
-      description: `${from} → ${to} — awaiting confirmation…`,
-    });
-
+    toast.info("Booking requested", { description: `${from} → ${to} — awaiting confirmation…` });
     setTimeout(() => {
-      toast.success("Ride confirmed!", {
-        description: `${from} → ${to} is confirmed.`,
-      });
+      toast.success("Ride confirmed!", { description: `${from} → ${to} is confirmed.` });
     }, 2200);
+  };
+
+  const handleSubscribe = (recurringRideId: string) => {
+    const ride = recurringRides.find((r) => r.id === recurringRideId);
+    const driver = getDriver(ride?.driverId ?? "");
+    const from = getLocation(ride?.fromLocationId ?? "")?.name;
+    const to = getLocation(ride?.toLocationId ?? "")?.name;
+
+    if (isSubscribedToRecurring(recurringRideId)) {
+      const sub = mySubscriptions.find((s) => s.recurringRideId === recurringRideId);
+      if (sub) unsubscribeFromRecurring(sub.id);
+      toast("Unsubscribed", { description: `Removed from ${driver?.name}'s ${DAY_NAMES[ride?.dayOfWeek ?? 0]} ride.` });
+    } else {
+      subscribeToRecurring(recurringRideId);
+      toast.success("Subscribed!", {
+        description: `Auto-booked every ${DAY_NAMES[ride?.dayOfWeek ?? 0]}: ${from} → ${to}`,
+      });
+    }
   };
 
   const getStatusBadge = (status: BookingStatus | undefined) => {
@@ -140,7 +176,108 @@ const RidesView = () => {
         )}
       </div>
 
-      {/* Ride cards */}
+      {/* ── Recurring Rides ─────────────────────────────────────────── */}
+      {filteredRecurring.length > 0 && (
+        <section className="mb-6">
+          <div className="mb-3 flex items-center gap-2">
+            <RepeatIcon className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Recurring Rides</h2>
+          </div>
+          <div className="space-y-3">
+            {filteredRecurring.map((ride, i) => {
+              const driver = getDriver(ride.driverId);
+              const from = getLocation(ride.fromLocationId);
+              const to = getLocation(ride.toLocationId);
+              const subscribed = isSubscribedToRecurring(ride.id);
+              const full = ride.availableSeats === 0 && !subscribed;
+
+              return (
+                <div
+                  key={ride.id}
+                  className="animate-slide-up rounded-xl border border-border bg-card p-4 shadow-sm transition-shadow hover:shadow-md"
+                  style={{ animationDelay: `${i * 50}ms`, animationFillMode: "both" }}
+                >
+                  {/* Route + recurring badge */}
+                  <div className="mb-3 flex items-start justify-between">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <MapPin className="h-4 w-4 shrink-0 text-primary" />
+                      <span>{from?.name ?? "Unknown"}</span>
+                      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span>{to?.name ?? "Unknown"}</span>
+                    </div>
+                    <Badge variant="secondary" className="shrink-0 gap-1 text-xs">
+                      <RepeatIcon className="h-3 w-3" />
+                      {DAY_NAMES[ride.dayOfWeek]}s
+                    </Badge>
+                  </div>
+
+                  {/* Details */}
+                  <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <User className="h-3.5 w-3.5" />
+                      <span className="text-foreground font-medium">{driver?.name}</span>
+                      {driver?.verified && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Shield className="h-3 w-3 text-primary" />
+                          </TooltipTrigger>
+                          <TooltipContent className="text-xs">Verified BYU Student</TooltipContent>
+                        </Tooltip>
+                      )}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5" />
+                      {ride.departureTime} weekly
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <Star className="h-3.5 w-3.5 fill-primary text-primary" />
+                      {driver?.rating.toFixed(1)} ({driver?.totalRides} rides)
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <Users className="h-3.5 w-3.5" />
+                      <span className={ride.availableSeats <= 1 && !subscribed ? "text-destructive font-medium" : ""}>
+                        {ride.totalSeats - ride.availableSeats}/{ride.totalSeats} seats filled
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-1.5 col-span-2">
+                      <Car className="h-3.5 w-3.5" />
+                      {driver?.vehicle.color} {driver?.vehicle.make} {driver?.vehicle.model} · <span className="font-mono text-foreground">{driver?.vehicle.licensePlate}</span>
+                    </span>
+                  </div>
+
+                  {/* Action */}
+                  <div className="flex items-center justify-end gap-2">
+                    {subscribed && (
+                      <Badge variant="outline" className="border-primary bg-accent text-accent-foreground gap-1 text-xs">
+                        <Check className="h-3 w-3" />
+                        Subscribed
+                      </Badge>
+                    )}
+                    <Button
+                      size="sm"
+                      variant={subscribed ? "outline" : "default"}
+                      disabled={full}
+                      onClick={() => handleSubscribe(ride.id)}
+                      className={`gap-1.5 text-xs ${subscribed ? "text-muted-foreground" : ""}`}
+                    >
+                      {subscribed ? <BellOff className="h-3 w-3" /> : <Bell className="h-3 w-3" />}
+                      {full ? "Full" : subscribed ? "Unsubscribe" : "Subscribe"}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* ── One-time Rides ──────────────────────────────────────────── */}
+      {filteredRecurring.length > 0 && (
+        <div className="mb-3 flex items-center gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">One-Time Rides</h2>
+        </div>
+      )}
+
       <div className="space-y-3">
         {filteredRides.length === 0 && (
           <div className="rounded-xl border border-border bg-card p-8 text-center">
