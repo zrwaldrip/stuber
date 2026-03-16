@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { MapPin, Clock, Loader2, Minus, Plus, CalendarIcon, Sparkles } from "lucide-react";
+import MapPicker from "./MapPicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +29,7 @@ const PostRideView = ({ onComplete }: PostRideViewProps) => {
   const [departure, setDeparture] = useState("");
   const [destination, setDestination] = useState("");
   const [date, setDate] = useState<Date | undefined>(new Date());
+  const [showMap, setShowMap] = useState(false);
   const [time, setTime] = useState(() => {
     const now = new Date();
     return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -132,6 +134,25 @@ const PostRideView = ({ onComplete }: PostRideViewProps) => {
                   {s}
                 </button>
               ))}
+            </div>
+          )}
+          <div className="mt-2">
+            <button
+              type="button"
+              className="text-sm text-primary underline"
+              onClick={() => setShowMap((s) => !s)}
+            >
+              {showMap ? "Hide map" : "Pick on map"}
+            </button>
+          </div>
+          {showMap && (
+            <div className="pt-3">
+              <MapPicker
+                onChange={(dep, dest) => {
+                  if (dep) setDeparture(dep);
+                  if (dest) setDestination(dest);
+                }}
+              />
             </div>
           )}
         </div>
