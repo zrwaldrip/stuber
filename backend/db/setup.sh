@@ -21,7 +21,8 @@ fi
 
 echo ""
 echo "Step 2: Running schema.sql..."
-psql -U postgres -d stuber -f schema.sql
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+psql -U postgres -d stuber -f "$SCRIPT_DIR/schema.sql"
 if [ $? -eq 0 ]; then
     echo "Schema created successfully!"
 else
@@ -31,7 +32,7 @@ fi
 
 echo ""
 echo "Step 3: Running seed.sql..."
-psql -U postgres -d stuber -f seed.sql
+psql -U postgres -d stuber -f "$SCRIPT_DIR/seed.sql"
 if [ $? -eq 0 ]; then
     echo "Seed data inserted successfully!"
 else

@@ -10,15 +10,37 @@ import { AppProvider } from "@/store/AppContext";
 
 const AppContent = () => {
   const [currentView, setCurrentView] = useState<View>("login");
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    try {
+      const raw = localStorage.getItem("stuber.user");
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      return typeof parsed?.user_id === "number";
+    } catch {
+      return false;
+    }
+  });
+  const [userId, setUserId] = useState<number | null>(() => {
+    try {
+      const raw = localStorage.getItem("stuber.user");
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return typeof parsed?.user_id === "number" ? parsed.user_id : null;
+    } catch {
+      return null;
+    }
+  });
 
-  const handleLogin = () => {
+  const handleLogin = (user: { user_id: number }) => {
     setIsLoggedIn(true);
+    setUserId(user.user_id);
     setCurrentView("rides");
   };
 
   const handleLogout = () => {
     setIsLoggedIn(false);
+    setUserId(null);
+    localStorage.removeItem("stuber.user");
     setCurrentView("login");
   };
 
@@ -32,7 +54,7 @@ const AppContent = () => {
       />
       <main>
         {currentView === "login" && <LoginView onLogin={handleLogin} />}
-        {currentView === "profile" && <ProfileView />}
+        {currentView === "profile" && <ProfileView userId={userId ?? 1} />}
         {currentView === "rides" && <RidesView />}
         {currentView === "post" && <PostRideView onComplete={() => setCurrentView("rides")} />}
         {currentView === "my-rides" && <MyRidesView />}

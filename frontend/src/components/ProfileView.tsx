@@ -50,7 +50,7 @@ const parseCarMakeModel = (input: string) => {
   return { year, make, model };
 };
 
-const ProfileView = () => {
+const ProfileView = ({ userId }: { userId: number }) => {
   const [firstName, setFirstName] = useState("Marcus");
   const [lastName, setLastName] = useState("Rivera");
   const [username, setUsername] = useState("marcusrivera");
@@ -70,8 +70,6 @@ const ProfileView = () => {
   const [editVehicleImageUrl, setEditVehicleImageUrl] = useState(vehicleImageUrl);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-  const userId = 1; // Default user ID - in a real app, this would come from auth context
-
   useEffect(() => {
     // Fetch user data on mount
     const fetchUser = async () => {

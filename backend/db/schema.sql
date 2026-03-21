@@ -11,6 +11,9 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+-- Needed for `crypt()` / `gen_salt()` password hashing helpers
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -289,6 +292,7 @@ CREATE TABLE IF NOT EXISTS public.users (
     username character varying(100) NOT NULL,
     email character varying(255) NOT NULL,
     phone varchar(20) NOT NULL,
+    password_hash text,
     profile_photo_url text,
     car_id integer,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
@@ -296,6 +300,18 @@ CREATE TABLE IF NOT EXISTS public.users (
 
 
 ALTER TABLE public.users OWNER TO postgres;
+
+-- Make password column exist even if table already existed
+ALTER TABLE public.users
+    ADD COLUMN IF NOT EXISTS password_hash text;
+
+-- Ensure seeded/legacy rows have a non-null password hash
+UPDATE public.users
+SET password_hash = crypt('ChangeMe123!', gen_salt('bf'))
+WHERE password_hash IS NULL;
+
+ALTER TABLE public.users
+    ALTER COLUMN password_hash SET NOT NULL;
 
 --
 -- TOC entry 214 (class 1259 OID 49744)

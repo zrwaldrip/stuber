@@ -33,7 +33,8 @@ if ($LASTEXITCODE -eq 0) {
 }
 
 Write-Host "`nStep 2: Running schema.sql..." -ForegroundColor Yellow
-$schemaResult = psql -U postgres -d stuber -f schema.sql 2>&1
+$schemaPath = Join-Path $PSScriptRoot "schema.sql"
+$schemaResult = psql -U postgres -d stuber -f $schemaPath 2>&1
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Schema created successfully!" -ForegroundColor Green
 } else {
@@ -41,7 +42,8 @@ if ($LASTEXITCODE -eq 0) {
 }
 
 Write-Host "`nStep 3: Running seed.sql..." -ForegroundColor Yellow
-$seedResult = psql -U postgres -d stuber -f seed.sql 2>&1
+$seedPath = Join-Path $PSScriptRoot "seed.sql"
+$seedResult = psql -U postgres -d stuber -f $seedPath 2>&1
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Seed data inserted successfully!" -ForegroundColor Green
 } else {

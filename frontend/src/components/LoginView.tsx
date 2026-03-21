@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Mail, Lock, Loader2, UserPlus, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import Logo from "./Logo";
 import { toast } from "sonner";
 
 interface LoginViewProps {
-  onLogin: () => void;
+  onLogin: (user: { user_id: number; email: string; username: string }) => void;
 }
 
 const LoginView = ({ onLogin }: LoginViewProps) => {
@@ -17,16 +17,47 @@ const LoginView = ({ onLogin }: LoginViewProps) => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [name, setName] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      toast.success(isSignUp ? "Account created!" : "Welcome back!", {
-        description: isSignUp ? "Your BYU student account is ready." : "Signed in successfully.",
+    try {
+      if (isSignUp) {
+        toast.message("Sign-up not wired yet", {
+          description: "For now, use one of the seeded users (password: ChangeMe123!).",
+        });
+        return;
+      }
+
+      const resp = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: email, password }),
       });
-      onLogin();
-    }, 1200);
+
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        const msg = (data && typeof data.error === "string" && data.error) || "Sign-in failed";
+        toast.error(msg);
+        return;
+      }
+
+      const user = data?.user;
+      if (!user?.user_id) {
+        toast.error("Sign-in failed", { description: "Server response was missing user info." });
+        return;
+      }
+
+      localStorage.setItem("stuber.user", JSON.stringify(user));
+      toast.success("Welcome back!", { description: "Signed in successfully." });
+      onLogin(user);
+    } catch (err) {
+      console.error(err);
+      toast.error("Sign-in failed", { description: "Could not reach the server." });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

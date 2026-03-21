@@ -3,11 +3,11 @@ TRUNCATE TABLE public.car RESTART IDENTITY CASCADE;
 TRUNCATE TABLE public.users RESTART IDENTITY CASCADE;
 
 -- Seed users (explicit IDs for clarity)
-INSERT INTO public.users (user_id, first_name, last_name, username, email, phone, profile_photo_url, car_id, created_at)
+INSERT INTO public.users (user_id, first_name, last_name, username, email, phone, password_hash, profile_photo_url, car_id, created_at)
 VALUES
-    (1, 'Marcus', 'Rivera', 'marcusrivera', 'marcus.rivera@byu.edu', '8015550001', NULL, NULL, CURRENT_TIMESTAMP),
-    (2, 'John',   'Doe',    'johndoe',      'john.doe@byu.edu',      '8015550002', NULL, NULL, CURRENT_TIMESTAMP),
-    (3, 'Jane',   'Doe',    'janedoe',      'jane.doe@byu.edu',      '8015550003', NULL, NULL, CURRENT_TIMESTAMP);
+    (1, 'Marcus', 'Rivera', 'marcusrivera', 'marcus.rivera@byu.edu', '8015550001', crypt('ChangeMe123!', gen_salt('bf')), NULL, NULL, CURRENT_TIMESTAMP),
+    (2, 'John',   'Doe',    'johndoe',      'john.doe@byu.edu',      '8015550002', crypt('ChangeMe123!', gen_salt('bf')), NULL, NULL, CURRENT_TIMESTAMP),
+    (3, 'Jane',   'Doe',    'janedoe',      'jane.doe@byu.edu',      '8015550003', crypt('ChangeMe123!', gen_salt('bf')), NULL, NULL, CURRENT_TIMESTAMP);
 
 -- Seed cars; user_id must match existing user rows
 INSERT INTO public.car (car_id, user_id, make, model, color, year, license_plate)

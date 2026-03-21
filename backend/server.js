@@ -34,6 +34,57 @@ pool.on('error', (err) => {
 
 // Routes
 
+// Auth: login (email or username + password)
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { identifier, password } = req.body ?? {};
+
+    if (!identifier || typeof identifier !== 'string' || identifier.trim() === '') {
+      return res.status(400).json({ error: 'Identifier (email or username) is required' });
+    }
+    if (!password || typeof password !== 'string') {
+      return res.status(400).json({ error: 'Password is required' });
+    }
+
+    const ident = identifier.trim().toLowerCase();
+
+    const result = await pool.query(
+      `SELECT user_id, first_name, last_name, username, email, phone, profile_photo_url, car_id
+       FROM users
+       WHERE (LOWER(email) = $1 OR LOWER(username) = $1)
+         AND password_hash = crypt($2, password_hash)
+       LIMIT 1`,
+      [ident, password]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    res.json({ user: result.rows[0] });
+  } catch (error) {
+    console.error('Error logging in:', error);
+
+    if (error.code === '3D000') {
+      return res.status(500).json({
+        error: 'Database does not exist. Please run the database setup scripts first.',
+      });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({
+        error: 'Database authentication failed. Please check your .env file credentials.',
+      });
+    }
+    if (error.code === '42883') {
+      return res.status(500).json({
+        error: "Password hashing functions not available. Ensure 'pgcrypto' extension is installed (schema.sql).",
+      });
+    }
+
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get all users
 app.get('/api/users', async (req, res) => {
   try {
