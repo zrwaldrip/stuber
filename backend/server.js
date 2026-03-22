@@ -1,9 +1,12 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import pg from 'pg';
 
-dotenv.config();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const { Pool } = pg;
 const app = express();
@@ -64,6 +67,14 @@ app.post('/api/auth/login', async (req, res) => {
     res.json({ user: result.rows[0] });
   } catch (error) {
     console.error('Error logging in:', error);
+
+    const msg = typeof error?.message === 'string' ? error.message : '';
+    if (msg.includes('SASL') || msg.includes('password must be a string')) {
+      return res.status(500).json({
+        error:
+          'Database connection failed. Copy backend/.env.example to backend/.env and set DB_PASSWORD to your PostgreSQL user password.',
+      });
+    }
 
     if (error.code === '3D000') {
       return res.status(500).json({
