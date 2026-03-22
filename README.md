@@ -33,6 +33,7 @@ Navigate to the project root and install packages for both the frontend and back
 
 - **For the backend:** `cd backend` then `npm install`
 - **For the frontend:** `cd ../frontend` then `npm install`
+- **Return to root:** `cd ..`
 
 ### Step 2: Database Configuration
 
@@ -41,8 +42,8 @@ Ensure your PostgreSQL server is active. Run these three commands in order to cr
 0. **Reset Database:** `psql -U postgres -c "DROP DATABASE IF EXISTS stuber;"`
 
 1. **Create Database:** `psql -U postgres -c "CREATE DATABASE stuber;"`
-2. **Run Schema:** `psql -U postgres -d stuber -f db/schema.sql`
-3. **Run Seed Data:** `psql -U postgres -d stuber -f db/seed.sql`
+2. **Run Schema:** `psql -U postgres -d stuber -f backend/db/schema.sql`
+3. **Run Seed Data:** `psql -U postgres -d stuber -f backend/db/seed.sql`
 
 ### Step 3: Environment Variables
 
