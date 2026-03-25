@@ -19,6 +19,13 @@ import { useToast } from "@/hooks/use-toast";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
+function uploadUrlFromValue(value: string) {
+  const v = value.trim();
+  if (!v) return "";
+  if (/^https?:\/\//i.test(v)) return v;
+  return `${API_BASE_URL}/uploads/${encodeURIComponent(v)}`;
+}
+
 function initialsFromName(first: string, last: string) {
   const a = first.trim().charAt(0);
   const b = last.trim().charAt(0);
@@ -74,8 +81,8 @@ const ProfileView = ({ userId }: { userId: number }) => {
   const [editUsername, setEditUsername] = useState(username);
   const [editCarMakeModel, setEditCarMakeModel] = useState(carMakeModel);
   const [editCarPlate, setEditCarPlate] = useState(carPlate);
-  const [editProfileImageUrl, setEditProfileImageUrl] = useState(profileImageUrl);
-  const [editVehicleImageUrl, setEditVehicleImageUrl] = useState(vehicleImageUrl);
+  const [editProfileImageFile, setEditProfileImageFile] = useState<File | null>(null);
+  const [editVehicleImageFile, setEditVehicleImageFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   useEffect(() => {
@@ -90,7 +97,7 @@ const ProfileView = ({ userId }: { userId: number }) => {
           setUsername(typeof user.username === "string" ? user.username : "");
           setEmail(typeof user.email === "string" ? user.email : "");
           setPhone(typeof user.phone === "string" ? user.phone : "");
-          setProfileImageUrl(typeof user.profile_photo_url === "string" ? user.profile_photo_url : "");
+          setProfileImageUrl(typeof user.profile_photo_path === "string" ? user.profile_photo_path : "");
 
           if (user.car_id) {
             setCarId(user.car_id);
@@ -104,7 +111,7 @@ const ProfileView = ({ userId }: { userId: number }) => {
               }
               setCarPlate(typeof car.license_plate === "string" ? car.license_plate : "");
               setCarColor(typeof car.color === "string" ? car.color : "");
-              setVehicleImageUrl(typeof car.car_photo_url === "string" ? car.car_photo_url : "");
+              setVehicleImageUrl(typeof car.car_photo_path === "string" ? car.car_photo_path : "");
             }
           } else {
             setCarId(null);
@@ -129,8 +136,8 @@ const ProfileView = ({ userId }: { userId: number }) => {
     setEditUsername(username);
     setEditCarMakeModel(carMakeModel);
     setEditCarPlate(carPlate);
-    setEditProfileImageUrl(profileImageUrl);
-    setEditVehicleImageUrl(vehicleImageUrl);
+    setEditProfileImageFile(null);
+    setEditVehicleImageFile(null);
     setIsEditOpen(true);
   };
 
@@ -159,18 +166,27 @@ const ProfileView = ({ userId }: { userId: number }) => {
         }),
       });
 
-      // Update profile photo
-      const profilePhotoResponse = await fetch(`${API_BASE_URL}/api/users/${userId}/profile-photo`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ photoUrl: editProfileImageUrl.trim() || null }),
-      });
+      // Upload profile photo if selected
+      let profilePhotoSuccess = true;
+      let newProfileFilename = profileImageUrl;
+      if (editProfileImageFile) {
+        const form = new FormData();
+        form.append("file", editProfileImageFile);
+        const resp = await fetch(`${API_BASE_URL}/api/users/${userId}/profile-photo`, {
+          method: "POST",
+          body: form,
+        });
+        profilePhotoSuccess = resp.ok;
+        if (resp.ok) {
+          const json = await resp.json().catch(() => null);
+          if (json && typeof json.filename === "string") newProfileFilename = json.filename;
+        }
+      }
 
       // Update car details and photo if car exists
       let carPhotoSuccess = true;
       let carDetailsSuccess = true;
+      let newVehicleFilename = vehicleImageUrl;
       if (carId) {
         const { year, make, model } = parseCarMakeModel(editCarMakeModel);
         const carDetailsResponse = await fetch(`${API_BASE_URL}/api/cars/${carId}`, {
@@ -187,17 +203,22 @@ const ProfileView = ({ userId }: { userId: number }) => {
         });
         carDetailsSuccess = carDetailsResponse.ok;
 
-        const carPhotoResponse = await fetch(`${API_BASE_URL}/api/cars/${carId}/photo`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ photoUrl: editVehicleImageUrl.trim() || null }),
-        });
-        carPhotoSuccess = carPhotoResponse.ok;
+        if (editVehicleImageFile) {
+          const form = new FormData();
+          form.append("file", editVehicleImageFile);
+          const carPhotoResponse = await fetch(`${API_BASE_URL}/api/cars/${carId}/photo`, {
+            method: "POST",
+            body: form,
+          });
+          carPhotoSuccess = carPhotoResponse.ok;
+          if (carPhotoResponse.ok) {
+            const json = await carPhotoResponse.json().catch(() => null);
+            if (json && typeof json.filename === "string") newVehicleFilename = json.filename;
+          }
+        }
       }
 
-      if (userResponse.ok && profilePhotoResponse.ok && carPhotoSuccess && carDetailsSuccess) {
+      if (userResponse.ok && profilePhotoSuccess && carPhotoSuccess && carDetailsSuccess) {
         const updated = await userResponse.json().catch(() => null);
         if (updated && typeof updated.email === "string") setEmail(updated.email);
         if (updated && typeof updated.phone === "string") setPhone(updated.phone);
@@ -206,8 +227,8 @@ const ProfileView = ({ userId }: { userId: number }) => {
         setLastName(editLastName.trim());
         setCarMakeModel(editCarMakeModel.trim());
         setCarPlate(editCarPlate.trim());
-        setProfileImageUrl(editProfileImageUrl.trim());
-        setVehicleImageUrl(editVehicleImageUrl.trim());
+        setProfileImageUrl(newProfileFilename);
+        setVehicleImageUrl(newVehicleFilename);
         setIsEditOpen(false);
         toast({
           title: "Success",
@@ -240,7 +261,7 @@ const ProfileView = ({ userId }: { userId: number }) => {
           <div className="relative mb-3">
             {profileImageUrl ? (
               <img
-                src={profileImageUrl}
+                src={uploadUrlFromValue(profileImageUrl)}
                 alt={`${firstName} ${lastName}`.trim() || "Profile"}
                 className="h-24 w-24 rounded-full border-2 border-primary object-cover shadow-md"
               />
@@ -355,7 +376,7 @@ const ProfileView = ({ userId }: { userId: number }) => {
             <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vehicle</h3>
             <div className="mb-6">
               <img
-                src={vehicleImageUrl}
+                src={uploadUrlFromValue(vehicleImageUrl)}
                 alt="Vehicle"
                 className="aspect-[4/3] w-full max-w-md rounded-lg object-cover shadow-sm"
               />
@@ -375,33 +396,15 @@ const ProfileView = ({ userId }: { userId: number }) => {
             <DialogDescription>Update your personal and vehicle information.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            {/* Profile picture (URL-based) */}
+            {/* Profile picture upload */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-foreground">Profile picture</label>
-              <div className="flex items-center gap-3">
-                {editProfileImageUrl || profileImageUrl ? (
-                  <img
-                    src={editProfileImageUrl || profileImageUrl}
-                    alt="Profile preview"
-                    className="h-14 w-14 rounded-full object-cover border border-border"
-                  />
-                ) : (
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full border border-border bg-muted text-xs font-semibold text-foreground">
-                    {initialsFromName(editFirstName, editLastName)}
-                  </div>
-                )}
-                <div className="flex-1 space-y-1">
-                  <Input
-                    value={editProfileImageUrl}
-                    onChange={(e) => setEditProfileImageUrl(e.target.value)}
-                    placeholder="https://example.com/profile.jpg"
-                    disabled={loading}
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Enter a public image URL for your profile photo.
-                  </p>
-                </div>
-              </div>
+              <Input
+                type="file"
+                accept="image/*"
+                disabled={loading}
+                onChange={(e) => setEditProfileImageFile(e.target.files?.[0] ?? null)}
+              />
             </div>
 
             {/* Name + username */}
@@ -455,33 +458,15 @@ const ProfileView = ({ userId }: { userId: number }) => {
               />
             </div>
 
-            {/* Vehicle image (URL-based) */}
+            {/* Vehicle image upload */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-foreground">Vehicle photo</label>
-              <div className="flex items-center gap-3">
-                {editVehicleImageUrl || vehicleImageUrl ? (
-                  <img
-                    src={editVehicleImageUrl || vehicleImageUrl}
-                    alt="Vehicle preview"
-                    className="h-16 w-24 rounded-md object-cover border border-border"
-                  />
-                ) : (
-                  <div className="flex h-16 w-24 items-center justify-center rounded-md border border-dashed border-border bg-muted/50 px-1 text-center text-[10px] text-muted-foreground">
-                    No photo
-                  </div>
-                )}
-                <div className="flex-1 space-y-1">
-                  <Input
-                    value={editVehicleImageUrl}
-                    onChange={(e) => setEditVehicleImageUrl(e.target.value)}
-                    placeholder="https://example.com/vehicle.jpg"
-                    disabled={loading}
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Enter a public image URL for your vehicle photo.
-                  </p>
-                </div>
-              </div>
+              <Input
+                type="file"
+                accept="image/*"
+                disabled={loading}
+                onChange={(e) => setEditVehicleImageFile(e.target.files?.[0] ?? null)}
+              />
             </div>
           </div>
           <DialogFooter>

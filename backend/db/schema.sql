@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS public.car (
     color character varying(50),
     year integer,
     license_plate character varying(20) NOT NULL,
-    car_photo_url text
+    -- Stores a local filename or relative path for an uploaded image (served from /uploads/*)
+    car_photo_path text
 );
 
 
@@ -295,7 +296,8 @@ CREATE TABLE IF NOT EXISTS public.users (
     email character varying(255) NOT NULL,
     phone varchar(20) NOT NULL,
     password_hash text,
-    profile_photo_url text,
+    -- Stores a local filename or relative path for an uploaded image (served from /uploads/*)
+    profile_photo_path text,
     car_id integer,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
