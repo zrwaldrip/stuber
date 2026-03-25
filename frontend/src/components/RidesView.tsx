@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { useAppState, type BookingStatus, DAY_NAMES } from "@/store/AppContext";
+import { useAppState, type BookingStatus, type Driver, DAY_NAMES } from "@/store/AppContext";
 import {
   Select,
   SelectContent,
@@ -21,6 +21,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import DriverProfileModal from "@/components/DriverProfileModal";
 
 type SortMode = "time" | "seats" | "rating";
 
@@ -33,6 +34,7 @@ const RidesView = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("time");
   const [showFilters, setShowFilters] = useState(false);
+  const [selectedDriver, setSelectedDriver] = useState<Driver | undefined>(undefined);
 
   // ── One-time rides ────────────────────────────────────────────────
   const filteredRides = useMemo(() => {
@@ -131,6 +133,11 @@ const RidesView = () => {
 
   return (
     <div className="mx-auto max-w-lg animate-fade-in px-4 py-6 pb-24">
+      <DriverProfileModal
+        driver={selectedDriver}
+        isOpen={!!selectedDriver}
+        onClose={() => setSelectedDriver(undefined)}
+      />
       <div className="mb-1 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Available Rides</h1>
@@ -215,7 +222,12 @@ const RidesView = () => {
                   <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1.5">
                       <User className="h-3.5 w-3.5" />
-                      <span className="text-foreground font-medium">{driver?.name}</span>
+                      <button
+                        className="text-foreground font-medium underline-offset-2 hover:underline hover:text-primary transition-colors"
+                        onClick={() => setSelectedDriver(driver)}
+                      >
+                        {driver?.name}
+                      </button>
                       {driver?.verified && (
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -314,7 +326,12 @@ const RidesView = () => {
               <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
                   <User className="h-3.5 w-3.5" />
-                  <span className="text-foreground font-medium">{driver?.name}</span>
+                  <button
+                    className="text-foreground font-medium underline-offset-2 hover:underline hover:text-primary transition-colors"
+                    onClick={() => setSelectedDriver(driver)}
+                  >
+                    {driver?.name}
+                  </button>
                   {driver?.verified && (
                     <Tooltip>
                       <TooltipTrigger asChild>
