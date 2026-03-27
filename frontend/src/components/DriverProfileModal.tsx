@@ -1,4 +1,4 @@
-import { MapPin, ArrowRight, Clock, Star, Car, Shield, RepeatIcon, Users, Check, Bell, BellOff, Loader2 } from "lucide-react";
+import { MapPin, ArrowRight, Clock, Star, Car, Shield, Users, Check, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { useAppState, type Driver, DAY_NAMES } from "@/store/AppContext";
+import { useAppState, type Driver } from "@/store/AppContext";
 
 interface DriverProfileModalProps {
   driver: Driver | undefined;
@@ -17,16 +17,11 @@ interface DriverProfileModalProps {
 }
 
 const DriverProfileModal = ({ driver, isOpen, onClose }: DriverProfileModalProps) => {
-  const {
-    rides, recurringRides, getLocation,
-    bookRide, bookings,
-    subscribeToRecurring, unsubscribeFromRecurring, isSubscribedToRecurring, mySubscriptions,
-  } = useAppState();
+  const { rides, getLocation, bookRide, bookings } = useAppState();
 
   if (!driver) return null;
 
   const driverRides = rides.filter((r) => r.driverId === driver.id && (r.availableSeats > 0 || bookings.has(r.id)));
-  const driverRecurring = recurringRides.filter((r) => r.driverId === driver.id && r.status === "active");
 
   const handleBook = (rideId: number) => {
     bookRide(rideId);
@@ -37,23 +32,6 @@ const DriverProfileModal = ({ driver, isOpen, onClose }: DriverProfileModalProps
     setTimeout(() => {
       toast.success("Ride confirmed!", { description: `${from} → ${to} is confirmed.` });
     }, 2200);
-  };
-
-  const handleSubscribe = (recurringRideId: string) => {
-    const ride = recurringRides.find((r) => r.id === recurringRideId);
-    const from = getLocation(ride?.fromLocationId ?? "")?.name;
-    const to = getLocation(ride?.toLocationId ?? "")?.name;
-
-    if (isSubscribedToRecurring(recurringRideId)) {
-      const sub = mySubscriptions.find((s) => s.recurringRideId === recurringRideId);
-      if (sub) unsubscribeFromRecurring(sub.id);
-      toast("Unsubscribed", { description: `Removed from ${driver.name}'s ${DAY_NAMES[ride?.dayOfWeek ?? 0]} ride.` });
-    } else {
-      subscribeToRecurring(recurringRideId);
-      toast.success("Subscribed!", {
-        description: `Auto-booked every ${DAY_NAMES[ride?.dayOfWeek ?? 0]}: ${from} → ${to}`,
-      });
-    }
   };
 
   return (
@@ -94,63 +72,7 @@ const DriverProfileModal = ({ driver, isOpen, onClose }: DriverProfileModalProps
             <p className="font-mono text-xs text-muted-foreground">{driver.vehicle.licensePlate}</p>
           </div>
 
-          {/* Recurring rides */}
-          {driverRecurring.length > 0 && (
-            <div>
-              <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                <RepeatIcon className="h-3.5 w-3.5" />
-                Recurring Rides
-              </div>
-              <div className="space-y-2">
-                {driverRecurring.map((ride) => {
-                  const from = getLocation(ride.fromLocationId);
-                  const to = getLocation(ride.toLocationId);
-                  const subscribed = isSubscribedToRecurring(ride.id);
-                  const full = ride.availableSeats === 0 && !subscribed;
-                  return (
-                    <div key={ride.id} className="rounded-lg border border-border bg-card p-2.5 text-xs">
-                      <div className="flex items-center gap-1.5 font-medium text-foreground">
-                        <MapPin className="h-3 w-3 text-primary shrink-0" />
-                        {from?.name ?? "Unknown"}
-                        <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-                        {to?.name ?? "Unknown"}
-                      </div>
-                      <div className="mt-1 flex items-center gap-3 text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {DAY_NAMES[ride.dayOfWeek]}s {ride.departureTime}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Users className="h-3 w-3" />
-                          {ride.availableSeats} seat{ride.availableSeats !== 1 ? "s" : ""} left
-                        </span>
-                      </div>
-                      <div className="mt-2 flex items-center justify-end gap-2">
-                        {subscribed && (
-                          <Badge variant="outline" className="border-primary bg-accent text-accent-foreground gap-1 text-xs">
-                            <Check className="h-3 w-3" />
-                            Subscribed
-                          </Badge>
-                        )}
-                        <Button
-                          size="sm"
-                          variant={subscribed ? "outline" : "default"}
-                          disabled={full}
-                          onClick={() => handleSubscribe(ride.id)}
-                          className="h-7 gap-1 text-xs"
-                        >
-                          {subscribed ? <BellOff className="h-3 w-3" /> : <Bell className="h-3 w-3" />}
-                          {full ? "Full" : subscribed ? "Unsubscribe" : "Subscribe"}
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* One-time rides */}
+          {/* Upcoming rides */}
           {driverRides.length > 0 && (
             <div>
               <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -211,7 +133,7 @@ const DriverProfileModal = ({ driver, isOpen, onClose }: DriverProfileModalProps
             </div>
           )}
 
-          {driverRides.length === 0 && driverRecurring.length === 0 && (
+          {driverRides.length === 0 && (
             <p className="text-center text-sm text-muted-foreground">No available rides at the moment.</p>
           )}
         </div>

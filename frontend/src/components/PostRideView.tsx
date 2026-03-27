@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Clock, Loader2, Minus, Plus, CalendarIcon, RepeatIcon } from "lucide-react";
+import { Clock, Loader2, Minus, Plus, CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,7 +8,6 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Switch } from "@/components/ui/switch";
 import { useAppState } from "@/store/AppContext";
 
 interface PostRideViewProps {
@@ -18,15 +17,6 @@ interface PostRideViewProps {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
-const WEEKDAYS = [
-  { label: "Sun", value: 0 },
-  { label: "Mon", value: 1 },
-  { label: "Tue", value: 2 },
-  { label: "Wed", value: 3 },
-  { label: "Thu", value: 4 },
-  { label: "Fri", value: 5 },
-  { label: "Sat", value: 6 },
-];
 
 const PostRideView = ({ userId, onComplete }: PostRideViewProps) => {
   const { refreshLiveRideCount } = useAppState();
@@ -50,15 +40,6 @@ const PostRideView = ({ userId, onComplete }: PostRideViewProps) => {
   });
   const [seats, setSeats] = useState(3);
   const [loading, setLoading] = useState(false);
-  const [isRecurring, setIsRecurring] = useState(false);
-  const [selectedDays, setSelectedDays] = useState<number[]>([]);
-
-  const toggleDay = (day: number) => {
-    setSelectedDays((prev) =>
-      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
-    );
-  };
-
   const fromLocName = useMemo(() => {
     if (!fromLocationId) return fromPlaceholderExample;
     return locations.find((l) => l.location_id === fromLocationId)?.name ?? fromPlaceholderExample;
@@ -107,17 +88,6 @@ const PostRideView = ({ userId, onComplete }: PostRideViewProps) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isRecurring && selectedDays.length === 0) {
-      toast.error("Select at least one day", { description: "Choose which days this ride repeats." });
-      return;
-    }
-    if (isRecurring) {
-      toast.error("Recurring rides are not database-backed yet", {
-        description: "Turn off recurring and post a one-time ride for now.",
-      });
-      return;
-    }
-
     setLoading(true);
     try {
       if (!fromLocationId || !toLocationId) {
@@ -230,70 +200,31 @@ const PostRideView = ({ userId, onComplete }: PostRideViewProps) => {
           />
         </div>
 
-        {/* Recurring toggle */}
-        <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3">
-          <div className="flex items-center gap-2.5">
-            <RepeatIcon className="h-4 w-4 text-primary" />
-            <div>
-              <p className="text-sm font-medium text-foreground">Recurring Ride</p>
-              <p className="text-xs text-muted-foreground">Repeats weekly — riders can subscribe</p>
-            </div>
-          </div>
-          <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
+        {/* Date picker */}
+        <div className="space-y-2">
+          <Label className="text-sm font-medium text-foreground">Date</Label>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn("w-full justify-start text-left font-normal", !date && "text-muted-foreground")}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {date ? format(date, "MMM d, yyyy") : "Pick a date"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={date}
+                onSelect={setDate}
+                initialFocus
+                className={cn("p-3 pointer-events-auto")}
+                disabled={(d) => d < new Date(new Date().setHours(0, 0, 0, 0))}
+              />
+            </PopoverContent>
+          </Popover>
         </div>
-
-        {/* Day picker (recurring only) */}
-        {isRecurring ? (
-          <div className="space-y-2 animate-fade-in">
-            <Label className="text-sm font-medium text-foreground">Repeats on</Label>
-            <div className="flex gap-1.5">
-              {WEEKDAYS.map((day) => {
-                const active = selectedDays.includes(day.value);
-                return (
-                  <button
-                    key={day.value}
-                    type="button"
-                    onClick={() => toggleDay(day.value)}
-                    className={cn(
-                      "flex-1 rounded-lg border py-2 text-xs font-medium transition-colors",
-                      active
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
-                    )}
-                  >
-                    {day.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
-          /* Date picker (one-time only) */
-          <div className="space-y-2">
-            <Label className="text-sm font-medium text-foreground">Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn("w-full justify-start text-left font-normal", !date && "text-muted-foreground")}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {date ? format(date, "MMM d, yyyy") : "Pick a date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={date}
-                  onSelect={setDate}
-                  initialFocus
-                  className={cn("p-3 pointer-events-auto")}
-                  disabled={(d) => d < new Date(new Date().setHours(0, 0, 0, 0))}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-        )}
 
         {/* Time */}
         <div className="space-y-2">
@@ -348,7 +279,7 @@ const PostRideView = ({ userId, onComplete }: PostRideViewProps) => {
           </Button>
           <Button type="submit" className="flex-[2]" disabled={loading}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            {loading ? "Posting…" : isRecurring ? "Post Recurring Ride" : "Post Ride"}
+            {loading ? "Posting…" : "Post Ride"}
           </Button>
         </div>
       </form>

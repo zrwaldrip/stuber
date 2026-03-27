@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  MapPin, ArrowRight, Clock, User, Car, Ticket, RepeatIcon, Loader2, Users,
+  MapPin, ArrowRight, Clock, User, Car, Ticket, Loader2, Users,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -323,7 +323,7 @@ const MyRidesView = () => {
 
       <section>
         <div className="mb-3 flex items-center gap-2">
-          <RepeatIcon className="h-4 w-4 text-primary" />
+          <Car className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Rides You Are Offering</h2>
           {offeredRides.length > 0 && (
             <Badge variant="secondary" className="text-xs">{offeredRides.length}</Badge>
@@ -335,7 +335,7 @@ const MyRidesView = () => {
 
         {offeredRides.length === 0 ? (
           <div className="rounded-xl border border-border bg-card p-6 text-center">
-            <RepeatIcon className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
+            <Car className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
             <p className="text-sm font-medium text-foreground">No offered rides yet</p>
             <p className="text-xs text-muted-foreground">Post a ride and it will appear here.</p>
           </div>
