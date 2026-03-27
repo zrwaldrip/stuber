@@ -52,7 +52,7 @@ const LoginView = ({ onLogin }: LoginViewProps) => {
           return;
         }
 
-        localStorage.setItem("stuber.user", JSON.stringify(user));
+        localStorage.setItem("blueride.user", JSON.stringify(user));
         toast.success("Account created!", { description: "You're signed in." });
         onLogin(user);
         return;
@@ -77,7 +77,7 @@ const LoginView = ({ onLogin }: LoginViewProps) => {
         return;
       }
 
-      localStorage.setItem("stuber.user", JSON.stringify(user));
+      localStorage.setItem("blueride.user", JSON.stringify(user));
       toast.success("Welcome back!", { description: "Signed in successfully." });
       onLogin(user);
     } catch (err) {
@@ -173,7 +173,7 @@ const LoginView = ({ onLogin }: LoginViewProps) => {
               </button>
             )} */}
             <div className="flex items-center justify-center gap-1 text-sm text-muted-foreground">
-              <span>{isSignUp ? "Already have an account?" : "New to STÜBER?"}</span>
+              <span>{isSignUp ? "Already have an account?" : "New to Blue Ride?"}</span>
               <button
                 type="button"
                 onClick={() => setIsSignUp(!isSignUp)}
