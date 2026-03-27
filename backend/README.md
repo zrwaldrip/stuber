@@ -22,10 +22,10 @@ DB_PASSWORD=your_password_here
 PORT=3000
 ```
 
-4. Set up the database:
+4. Set up the database (from the `backend` directory):
    - Create a PostgreSQL database named `stuber`
-   - Run the schema: `psql -d stuber -f ../db/schema.sql`
-   - Run the seed data: `psql -d stuber -f ../db/seed.sql`
+   - Run the schema: `psql -U postgres -d stuber -f db/schema.sql`
+   - Run the seed data: `psql -U postgres -d stuber -f db/seed.sql`
 
 5. Start the server:
 ```bash

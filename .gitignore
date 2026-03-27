@@ -25,3 +25,7 @@ dist-ssr
 
 # Local frontend env
 frontend/.env
+backend/.env
+
+# Local uploads directory (Railway uses /app/uploads volume)
+backend/uploads/

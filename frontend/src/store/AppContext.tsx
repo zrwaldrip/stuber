@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 
 // ── Types ───────────────────────────────────────────────────────────
 export interface Location {
@@ -156,9 +156,11 @@ interface AppState {
   getLocation: (id: string) => Location | undefined;
   getRecurringRide: (id: string) => RecurringRide | undefined;
   liveRideCount: number;
+  refreshLiveRideCount: () => Promise<void>;
 }
 
 const AppContext = createContext<AppState | null>(null);
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 export const useAppState = () => {
   const ctx = useContext(AppContext);
@@ -172,6 +174,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [recurringRides, setRecurringRides] = useState<RecurringRide[]>(INITIAL_RECURRING_RIDES);
   const [mySubscriptions, setMySubscriptions] = useState<RideSubscription[]>(INITIAL_MY_SUBSCRIPTIONS);
   const [riderSubscriptions, setRiderSubscriptions] = useState<RideSubscription[]>(INITIAL_RIDER_SUBSCRIPTIONS);
+  const [liveRideCount, setLiveRideCount] = useState(0);
 
   // ── One-time ride booking ──────────────────────────────────────────
   const bookRide = useCallback((rideId: number) => {
@@ -266,7 +269,22 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const getLocation = useCallback((id: string) => LOCATIONS.find((l) => l.id === id), []);
   const getRecurringRide = useCallback((id: string) => recurringRides.find((r) => r.id === id), [recurringRides]);
 
-  const liveRideCount = rides.filter((r) => r.availableSeats > 0).length;
+  const refreshLiveRideCount = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/rides`);
+      if (!response.ok) throw new Error("Failed to fetch live ride count");
+      const data = await response.json();
+      const rows = Array.isArray(data) ? data : [];
+      const count = rows.filter((r) => Number(r?.available_seats ?? 0) > 0).length;
+      setLiveRideCount(count);
+    } catch (error) {
+      console.error("Error refreshing live ride count:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshLiveRideCount();
+  }, [refreshLiveRideCount]);
 
   return (
     <AppContext.Provider value={{
@@ -274,7 +292,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       recurringRides, mySubscriptions, riderSubscriptions,
       addRecurringRide, subscribeToRecurring, unsubscribeFromRecurring,
       isSubscribedToRecurring, markRiderNoShow,
-      getDriver, getLocation, getRecurringRide, liveRideCount,
+      getDriver, getLocation, getRecurringRide, liveRideCount, refreshLiveRideCount,
     }}>
       {children}
     </AppContext.Provider>

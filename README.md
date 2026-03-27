@@ -1,6 +1,6 @@
 ## App Summary
 
-Many college students have limited access to transportation but still rely on cars for groceries and other errands. Stüber facilitates voluntary ridesharing between students and local residents who have vehicles and those who do not. If a car owner plans to go to the grocery store and is willing to offer seats, they can post a ride on Stüber for others to view and request to join. For security and trust, users have profiles which others may rate depending on experience. Primary users include both riders seeking transportation and drivers offering available seats.
+Many college students have limited access to transportation but still rely on cars for groceries and other errands. Blue Ride facilitates voluntary ridesharing between students and local residents who have vehicles and those who do not. If a car owner plans to go to the grocery store and is willing to offer seats, they can post a ride on Blue Ride for others to view and request to join. For security and trust, users have profiles and verified account indicators. Primary users include both riders seeking transportation and drivers offering available seats.
 
 ## Tech Stack
 ![TechStack](img/TechStack.png)
@@ -33,6 +33,7 @@ Navigate to the project root and install packages for both the frontend and back
 
 - **For the backend:** `cd backend` then `npm install`
 - **For the frontend:** `cd ../frontend` then `npm install`
+- **Return to root:** `cd ..`
 
 ### Step 2: Database Configuration
 
@@ -41,8 +42,8 @@ Ensure your PostgreSQL server is active. Run these three commands in order to cr
 0. **Reset Database:** `psql -U postgres -c "DROP DATABASE IF EXISTS stuber;"`
 
 1. **Create Database:** `psql -U postgres -c "CREATE DATABASE stuber;"`
-2. **Run Schema:** `psql -U postgres -d stuber -f db/schema.sql`
-3. **Run Seed Data:** `psql -U postgres -d stuber -f db/seed.sql`
+2. **Run Schema:** `psql -U postgres -d stuber -f backend/db/schema.sql`
+3. **Run Seed Data:** `psql -U postgres -d stuber -f backend/db/seed.sql`
 
 ### Step 3: Environment Variables
 
@@ -80,10 +81,12 @@ The frontend will start at the URL shown in your terminal (usually http://localh
 
 Follow these steps to confirm the full stack is working correctly:
 
-1. **Trigger the Change:** Navigate to the "User Profile" section in the application.
-2. **Edit Data:** Select the pencil icon next to the username and edit the name to something new. Save the changes.
-3. **Confirm Persistence:** Refresh the page or restart both the frontend and backend servers.
-4. **Verify:** Return to the profile page. If the edited username is still displayed, the change has successfully persisted in the PostgreSQL database.
+1. **Log in and verify default view:** Log in, refresh the page, and confirm you return to the Rides screen (not Login) while still authenticated.
+2. **Post a ride:** Open **Post** from the bottom navbar and submit a one-time ride.
+3. **Verify DB-backed rides:** Return to **Rides** and confirm the new ride appears in the list.
+4. **Verify DB-backed live count:** Confirm the header's **Live** count reflects available rides from the backend.
+5. **Verify profile persistence:** Open **Profile**, edit profile details, save, refresh, and confirm changes persist.
+6. **Verify navigation and sign-out:** Confirm navigation is available from the bottom navbar (**Rides**, **My Rides**, **Post**, **Profile**) and sign out from the Profile page.
 
 ## EARS Requirements
 **Completed**
@@ -91,12 +94,12 @@ Follow these steps to confirm the full stack is working correctly:
 - When the user clicks a different page, the system will load the specified page
 - When the user changes profile information, the system shall save the updated information
 - When the user is logged in, the system shall display the available rides page
-
-**Not completed**
 - When a user posts a ride, the system shall add it to the available ride page
 - The system shall display all available rides
+- The system shall show a "My Rides" page displaying your booking and offers
+
+**Not completed**
 - When a user selects a ride, the booking information is shown
 - When a user books a ride, the information is sent to the ride owner
-- The system shall show a "My Rides" page displaying your booking and offers
 - When the user selects my offers, the system shall display who has filled the seats
-- When the user selects my bookings, the system shall display the ride infromation
+- When the user selects my bookings, the system shall display the ride information

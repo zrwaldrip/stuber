@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import LoginView from "@/components/LoginView";
 import ProfileView from "@/components/ProfileView";
 import RidesView from "@/components/RidesView";
@@ -8,36 +8,63 @@ import AppHeader, { type View } from "@/components/AppHeader";
 import BottomNav from "@/components/BottomNav";
 import { AppProvider } from "@/store/AppContext";
 
-const AppContent = () => {
-  const [currentView, setCurrentView] = useState<View>("login");
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+const getStoredUserId = () => {
+  try {
+    const raw = localStorage.getItem("blueride.user");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const userId = Number(parsed?.user_id);
+    return Number.isFinite(userId) ? userId : null;
+  } catch {
+    return null;
+  }
+};
 
-  const handleLogin = () => {
+const AppContent = () => {
+  const [userId, setUserId] = useState<number | null>(() => getStoredUserId());
+  const [isLoggedIn, setIsLoggedIn] = useState(() => getStoredUserId() != null);
+  const [currentView, setCurrentView] = useState<View>(() => (getStoredUserId() != null ? "rides" : "login"));
+
+  const handleLogin = (user: { user_id: number }) => {
     setIsLoggedIn(true);
+    setUserId(user.user_id);
     setCurrentView("rides");
   };
 
   const handleLogout = () => {
     setIsLoggedIn(false);
+    setUserId(null);
+    localStorage.removeItem("blueride.user");
     setCurrentView("login");
   };
+
+  useEffect(() => {
+    if (!isLoggedIn && currentView !== "login") {
+      setCurrentView("login");
+      return;
+    }
+
+    if (isLoggedIn && currentView === "login") {
+      setCurrentView("rides");
+    }
+  }, [isLoggedIn, currentView]);
 
   return (
     <div className="min-h-screen bg-background">
       <AppHeader
-        currentView={currentView}
         onNavigate={setCurrentView}
         isLoggedIn={isLoggedIn}
-        onLogout={handleLogout}
       />
       <main>
         {currentView === "login" && <LoginView onLogin={handleLogin} />}
-        {currentView === "profile" && <ProfileView />}
+        {currentView === "profile" && userId != null && <ProfileView userId={userId} onLogout={handleLogout} />}
         {currentView === "rides" && <RidesView />}
-        {currentView === "post" && <PostRideView onComplete={() => setCurrentView("rides")} />}
+        {currentView === "post" && userId != null && (
+          <PostRideView userId={userId} onComplete={() => setCurrentView("rides")} />
+        )}
         {currentView === "my-rides" && <MyRidesView />}
       </main>
-      {isLoggedIn && <BottomNav currentView={currentView} onNavigate={setCurrentView} />}
+      {isLoggedIn && currentView !== "login" && <BottomNav currentView={currentView} onNavigate={setCurrentView} />}
     </div>
   );
 };

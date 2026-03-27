@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BadgeCheck, MapPin, Car, Star, Shield, Award, Route } from "lucide-react";
+import { BadgeCheck, Car, Star, Shield, Award, Route, Mail, Phone, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,11 +16,22 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import profilePhoto from "@/assets/profile-photo.jpg";
-import carExterior from "@/assets/car-exterior.jpg";
-import carInterior from "@/assets/car-interior.jpg";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+
+function uploadUrlFromValue(value: string) {
+  const v = value.trim();
+  if (!v) return "";
+  if (/^https?:\/\//i.test(v)) return v;
+  return `${API_BASE_URL}/uploads/${encodeURIComponent(v)}`;
+}
+
+function initialsFromName(first: string, last: string) {
+  const a = first.trim().charAt(0);
+  const b = last.trim().charAt(0);
+  const s = `${a}${b}`.toUpperCase();
+  return s || "?";
+}
 
 const parseCarMakeModel = (input: string) => {
   const parts = input.trim().split(/\s+/).filter(Boolean);
@@ -50,15 +61,24 @@ const parseCarMakeModel = (input: string) => {
   return { year, make, model };
 };
 
-const ProfileView = () => {
-  const [firstName, setFirstName] = useState("Marcus");
-  const [lastName, setLastName] = useState("Rivera");
-  const [username, setUsername] = useState("marcusrivera");
-  const [carMakeModel, setCarMakeModel] = useState("2024 Tesla Model 3");
-  const [carPlate, setCarPlate] = useState("EV-04821");
+interface ProfileViewProps {
+  userId: number;
+  onLogout: () => void;
+}
+
+const ProfileView = ({ userId, onLogout }: ProfileViewProps) => {
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [carMakeModel, setCarMakeModel] = useState("");
+  const [carPlate, setCarPlate] = useState("");
+  const [carColor, setCarColor] = useState("");
   const [profileImageUrl, setProfileImageUrl] = useState("");
   const [vehicleImageUrl, setVehicleImageUrl] = useState("");
   const [carId, setCarId] = useState<number | null>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editFirstName, setEditFirstName] = useState(firstName);
@@ -66,39 +86,50 @@ const ProfileView = () => {
   const [editUsername, setEditUsername] = useState(username);
   const [editCarMakeModel, setEditCarMakeModel] = useState(carMakeModel);
   const [editCarPlate, setEditCarPlate] = useState(carPlate);
-  const [editProfileImageUrl, setEditProfileImageUrl] = useState(profileImageUrl);
-  const [editVehicleImageUrl, setEditVehicleImageUrl] = useState(vehicleImageUrl);
+  const [editProfileImageFile, setEditProfileImageFile] = useState<File | null>(null);
+  const [editVehicleImageFile, setEditVehicleImageFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-  const userId = 1; // Default user ID - in a real app, this would come from auth context
-
   useEffect(() => {
-    // Fetch user data on mount
     const fetchUser = async () => {
+      setProfileLoaded(false);
       try {
         const response = await fetch(`${API_BASE_URL}/api/users/${userId}`);
         if (response.ok) {
           const user = await response.json();
-          if (user.first_name) setFirstName(user.first_name);
-          if (user.last_name) setLastName(user.last_name);
-          if (user.username) setUsername(user.username);
-          if (user.profile_photo_url) setProfileImageUrl(user.profile_photo_url);
+          setFirstName(typeof user.first_name === "string" ? user.first_name : "");
+          setLastName(typeof user.last_name === "string" ? user.last_name : "");
+          setUsername(typeof user.username === "string" ? user.username : "");
+          setEmail(typeof user.email === "string" ? user.email : "");
+          setPhone(typeof user.phone === "string" ? user.phone : "");
+          setProfileImageUrl(typeof user.profile_photo_path === "string" ? user.profile_photo_path : "");
+
           if (user.car_id) {
             setCarId(user.car_id);
-            // Fetch car data
             const carResponse = await fetch(`${API_BASE_URL}/api/cars/${user.car_id}`);
             if (carResponse.ok) {
               const car = await carResponse.json();
               if (car.make && car.model) {
-                setCarMakeModel(`${car.year || ''} ${car.make} ${car.model}`.trim());
+                setCarMakeModel(`${car.year ?? ""} ${car.make} ${car.model}`.trim());
+              } else {
+                setCarMakeModel("");
               }
-              if (car.license_plate) setCarPlate(car.license_plate);
-              if (car.car_photo_url) setVehicleImageUrl(car.car_photo_url);
+              setCarPlate(typeof car.license_plate === "string" ? car.license_plate : "");
+              setCarColor(typeof car.color === "string" ? car.color : "");
+              setVehicleImageUrl(typeof car.car_photo_path === "string" ? car.car_photo_path : "");
             }
+          } else {
+            setCarId(null);
+            setCarMakeModel("");
+            setCarPlate("");
+            setCarColor("");
+            setVehicleImageUrl("");
           }
         }
       } catch (error) {
         console.error("Error fetching user:", error);
+      } finally {
+        setProfileLoaded(true);
       }
     };
     fetchUser();
@@ -110,8 +141,8 @@ const ProfileView = () => {
     setEditUsername(username);
     setEditCarMakeModel(carMakeModel);
     setEditCarPlate(carPlate);
-    setEditProfileImageUrl(profileImageUrl);
-    setEditVehicleImageUrl(vehicleImageUrl);
+    setEditProfileImageFile(null);
+    setEditVehicleImageFile(null);
     setIsEditOpen(true);
   };
 
@@ -140,18 +171,27 @@ const ProfileView = () => {
         }),
       });
 
-      // Update profile photo
-      const profilePhotoResponse = await fetch(`${API_BASE_URL}/api/users/${userId}/profile-photo`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ photoUrl: editProfileImageUrl.trim() || null }),
-      });
+      // Upload profile photo if selected
+      let profilePhotoSuccess = true;
+      let newProfileFilename = profileImageUrl;
+      if (editProfileImageFile) {
+        const form = new FormData();
+        form.append("file", editProfileImageFile);
+        const resp = await fetch(`${API_BASE_URL}/api/users/${userId}/profile-photo`, {
+          method: "POST",
+          body: form,
+        });
+        profilePhotoSuccess = resp.ok;
+        if (resp.ok) {
+          const json = await resp.json().catch(() => null);
+          if (json && typeof json.filename === "string") newProfileFilename = json.filename;
+        }
+      }
 
       // Update car details and photo if car exists
       let carPhotoSuccess = true;
       let carDetailsSuccess = true;
+      let newVehicleFilename = vehicleImageUrl;
       if (carId) {
         const { year, make, model } = parseCarMakeModel(editCarMakeModel);
         const carDetailsResponse = await fetch(`${API_BASE_URL}/api/cars/${carId}`, {
@@ -168,24 +208,32 @@ const ProfileView = () => {
         });
         carDetailsSuccess = carDetailsResponse.ok;
 
-        const carPhotoResponse = await fetch(`${API_BASE_URL}/api/cars/${carId}/photo`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ photoUrl: editVehicleImageUrl.trim() || null }),
-        });
-        carPhotoSuccess = carPhotoResponse.ok;
+        if (editVehicleImageFile) {
+          const form = new FormData();
+          form.append("file", editVehicleImageFile);
+          const carPhotoResponse = await fetch(`${API_BASE_URL}/api/cars/${carId}/photo`, {
+            method: "POST",
+            body: form,
+          });
+          carPhotoSuccess = carPhotoResponse.ok;
+          if (carPhotoResponse.ok) {
+            const json = await carPhotoResponse.json().catch(() => null);
+            if (json && typeof json.filename === "string") newVehicleFilename = json.filename;
+          }
+        }
       }
 
-      if (userResponse.ok && profilePhotoResponse.ok && carPhotoSuccess && carDetailsSuccess) {
+      if (userResponse.ok && profilePhotoSuccess && carPhotoSuccess && carDetailsSuccess) {
+        const updated = await userResponse.json().catch(() => null);
+        if (updated && typeof updated.email === "string") setEmail(updated.email);
+        if (updated && typeof updated.phone === "string") setPhone(updated.phone);
         setUsername(editUsername.trim());
         setFirstName(editFirstName.trim());
         setLastName(editLastName.trim());
         setCarMakeModel(editCarMakeModel.trim());
         setCarPlate(editCarPlate.trim());
-        setProfileImageUrl(editProfileImageUrl.trim());
-        setVehicleImageUrl(editVehicleImageUrl.trim());
+        setProfileImageUrl(newProfileFilename);
+        setVehicleImageUrl(newVehicleFilename);
         setIsEditOpen(false);
         toast({
           title: "Success",
@@ -216,11 +264,20 @@ const ProfileView = () => {
         {/* Profile header */}
         <div className="mb-6 flex flex-col items-center text-center">
           <div className="relative mb-3">
-            <img
-              src={profileImageUrl || profilePhoto}
-              alt={`${firstName} ${lastName}`}
-              className="h-24 w-24 rounded-full border-2 border-primary object-cover shadow-md"
-            />
+            {profileImageUrl ? (
+              <img
+                src={uploadUrlFromValue(profileImageUrl)}
+                alt={`${firstName} ${lastName}`.trim() || "Profile"}
+                className="h-24 w-24 rounded-full border-2 border-primary object-cover shadow-md"
+              />
+            ) : (
+              <div
+                className="flex h-24 w-24 items-center justify-center rounded-full border-2 border-primary bg-muted text-lg font-semibold text-foreground shadow-md"
+                aria-hidden
+              >
+                {profileLoaded ? initialsFromName(firstName, lastName) : "…"}
+              </div>
+            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="absolute -bottom-1 -right-1 flex h-7 w-7 cursor-help items-center justify-center rounded-full bg-primary shadow-sm">
@@ -229,35 +286,37 @@ const ProfileView = () => {
               </TooltipTrigger>
               <TooltipContent className="max-w-[200px] text-xs">
                 <p className="font-semibold">Verified BYU Student</p>
-                <p className="text-muted-foreground">Student status and vehicle info have been verified by STÜBER.</p>
+                <p className="text-muted-foreground">Student status and vehicle info have been verified by Blue Ride.</p>
               </TooltipContent>
             </Tooltip>
           </div>
-          <h2 className="text-xl font-semibold text-foreground">{firstName} {lastName}</h2>
+          <h2 className="text-xl font-semibold text-foreground">
+            {profileLoaded ? `${firstName} ${lastName}`.trim() || "—" : "…"}
+          </h2>
           <div className="flex items-center gap-2">
-            <p className="text-sm text-muted-foreground">@{username}</p>
+            <p className="text-sm text-muted-foreground">
+              {profileLoaded ? (username ? `@${username}` : "—") : "…"}
+            </p>
           </div>
-        <div className="mt-2 flex items-center gap-1">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <Star key={i} className={`h-4 w-4 ${i <= 4 ? "fill-primary text-primary" : "fill-muted text-muted"}`} />
-          ))}
-          <span className="ml-1 text-sm font-semibold text-foreground">4.9</span>
+          <div className="mt-2 flex items-center gap-1 text-sm text-muted-foreground">
+            <Star className="h-4 w-4" />
+            <span>No ratings yet</span>
+          </div>
         </div>
-      </div>
 
-        {/* Stats cards */}
+        {/* Stats cards — only real counts when the API provides them; until then show zeros / empty */}
         <div className="mb-6 grid grid-cols-2 gap-3">
-        <div className="flex flex-col items-center rounded-xl border border-border bg-card p-4 shadow-sm">
-          <Route className="mb-1 h-5 w-5 text-primary" />
-          <span className="text-2xl font-bold text-foreground">128</span>
-          <span className="text-xs text-muted-foreground">Total Rides</span>
+          <div className="flex flex-col items-center rounded-xl border border-border bg-card p-4 shadow-sm">
+            <Route className="mb-1 h-5 w-5 text-primary" />
+            <span className="text-2xl font-bold text-foreground">0</span>
+            <span className="text-xs text-muted-foreground">Total Rides</span>
+          </div>
+          <div className="flex flex-col items-center rounded-xl border border-border bg-card p-4 shadow-sm">
+            <Award className="mb-1 h-5 w-5 text-primary" />
+            <span className="text-2xl font-bold text-foreground">—</span>
+            <span className="text-xs text-muted-foreground">Avg. Rating</span>
+          </div>
         </div>
-        <div className="flex flex-col items-center rounded-xl border border-border bg-card p-4 shadow-sm">
-          <Award className="mb-1 h-5 w-5 text-primary" />
-          <span className="text-2xl font-bold text-foreground">4.9</span>
-          <span className="text-xs text-muted-foreground">Avg. Rating</span>
-        </div>
-      </div>
 
         {/* Actions */}
         <div className="mb-6 flex gap-3">
@@ -270,46 +329,76 @@ const ProfileView = () => {
           </Button>
           <Button variant="outline" className="flex-1 text-sm">Share Profile</Button>
         </div>
+        <div className="mb-6">
+          <Button variant="destructive" className="w-full gap-2 text-sm" onClick={onLogout}>
+            <LogOut className="h-4 w-4" />
+            Sign Out
+          </Button>
+        </div>
 
-        {/* Info cards */}
+        {/* Info cards — data from the API only (no demo major, location, or stock photos) */}
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Details</h3>
         <div className="mb-6 space-y-2">
-        <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3.5">
-          <Shield className="h-4 w-4 text-primary" />
-          <div>
-            <span className="text-sm font-medium text-foreground">Verified Student</span>
-            <p className="text-xs text-muted-foreground">BYU · Computer Science</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3.5">
-          <MapPin className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm text-foreground">Heritage Halls, Provo, UT</span>
-        </div>
+          {email ? (
+            <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3.5">
+              <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="break-all text-sm text-foreground">{email}</span>
+            </div>
+          ) : null}
+          {phone.trim() ? (
+            <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3.5">
+              <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="text-sm text-foreground">{phone}</span>
+            </div>
+          ) : null}
           <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3.5">
-            <Car className="h-4 w-4 text-muted-foreground" />
+            <Shield className="h-4 w-4 shrink-0 text-primary" />
             <div>
-              <span className="text-sm font-medium text-foreground">{carMakeModel}</span>
-              <p className="text-xs text-muted-foreground">
-                Midnight Black · <span className="font-mono">{carPlate}</span>
-              </p>
+              <span className="text-sm font-medium text-foreground">Verified Student</span>
+              <p className="text-xs text-muted-foreground">BYU account</p>
             </div>
           </div>
+          {carId ? (
+            <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3.5">
+              <Car className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <div>
+                <span className="text-sm font-medium text-foreground">
+                  {carMakeModel.trim() || "Vehicle on file"}
+                </span>
+                {(carColor || carPlate) ? (
+                  <p className="text-xs text-muted-foreground">
+                    {carColor ? <>{carColor}</> : null}
+                    {carColor && carPlate ? " · " : null}
+                    {carPlate ? <span className="font-mono">{carPlate}</span> : null}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-card/50 p-3.5">
+              <Car className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">No vehicle added yet</span>
+            </div>
+          )}
         </div>
 
-        {/* Photo gallery */}
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vehicle Gallery</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <img
-            src={vehicleImageUrl || carExterior}
-            alt="Car exterior"
-            className="aspect-[4/3] w-full rounded-lg object-cover shadow-sm"
-          />
-          <img
-            src={carInterior}
-            alt="Car interior"
-            className="aspect-[4/3] w-full rounded-lg object-cover shadow-sm"
-          />
-        </div>
+        {carId && vehicleImageUrl ? (
+          <>
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vehicle</h3>
+            <div className="mb-6">
+              <img
+                src={uploadUrlFromValue(vehicleImageUrl)}
+                alt="Vehicle"
+                className="aspect-[4/3] w-full max-w-md rounded-lg object-cover shadow-sm"
+              />
+            </div>
+          </>
+        ) : carId ? (
+          <>
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vehicle</h3>
+            <p className="mb-6 text-sm text-muted-foreground">No vehicle photo yet — add a URL in Edit Profile.</p>
+          </>
+        ) : null}
       </div>
       <Dialog open={isEditOpen} onOpenChange={(open) => !loading && setIsEditOpen(open)}>
         <DialogContent>
@@ -318,27 +407,15 @@ const ProfileView = () => {
             <DialogDescription>Update your personal and vehicle information.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            {/* Profile picture (URL-based) */}
+            {/* Profile picture upload */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-foreground">Profile picture</label>
-              <div className="flex items-center gap-3">
-                <img
-                  src={editProfileImageUrl || profileImageUrl || profilePhoto}
-                  alt="Profile preview"
-                  className="h-14 w-14 rounded-full object-cover border border-border"
-                />
-                <div className="flex-1 space-y-1">
-                  <Input
-                    value={editProfileImageUrl}
-                    onChange={(e) => setEditProfileImageUrl(e.target.value)}
-                    placeholder="https://example.com/profile.jpg"
-                    disabled={loading}
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Enter a public image URL for your profile photo.
-                  </p>
-                </div>
-              </div>
+              <Input
+                type="file"
+                accept="image/*"
+                disabled={loading}
+                onChange={(e) => setEditProfileImageFile(e.target.files?.[0] ?? null)}
+              />
             </div>
 
             {/* Name + username */}
@@ -392,27 +469,15 @@ const ProfileView = () => {
               />
             </div>
 
-            {/* Vehicle image (URL-based) */}
+            {/* Vehicle image upload */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-foreground">Vehicle photo</label>
-              <div className="flex items-center gap-3">
-                <img
-                  src={editVehicleImageUrl || vehicleImageUrl || carExterior}
-                  alt="Vehicle preview"
-                  className="h-16 w-24 rounded-md object-cover border border-border"
-                />
-                <div className="flex-1 space-y-1">
-                  <Input
-                    value={editVehicleImageUrl}
-                    onChange={(e) => setEditVehicleImageUrl(e.target.value)}
-                    placeholder="https://example.com/vehicle.jpg"
-                    disabled={loading}
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Enter a public image URL for your vehicle photo.
-                  </p>
-                </div>
-              </div>
+              <Input
+                type="file"
+                accept="image/*"
+                disabled={loading}
+                onChange={(e) => setEditVehicleImageFile(e.target.files?.[0] ?? null)}
+              />
             </div>
           </div>
           <DialogFooter>

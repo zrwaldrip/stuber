@@ -5,6 +5,11 @@ SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
+-- Needed for `crypt()` / `gen_salt()` password hashing helpers.
+-- Must run before `search_path` is cleared below, or CREATE EXTENSION can fail.
+SET search_path TO public;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
 SET xmloption = content;
@@ -28,7 +33,8 @@ CREATE TABLE IF NOT EXISTS public.car (
     color character varying(50),
     year integer,
     license_plate character varying(20) NOT NULL,
-    car_photo_url text
+    -- Stores a local filename or relative path for an uploaded image (served from /uploads/*)
+    car_photo_path text
 );
 
 
@@ -289,13 +295,27 @@ CREATE TABLE IF NOT EXISTS public.users (
     username character varying(100) NOT NULL,
     email character varying(255) NOT NULL,
     phone varchar(20) NOT NULL,
-    profile_photo_url text,
+    password_hash text,
+    -- Stores a local filename or relative path for an uploaded image (served from /uploads/*)
+    profile_photo_path text,
     car_id integer,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 
 ALTER TABLE public.users OWNER TO postgres;
+
+-- Make password column exist even if table already existed
+ALTER TABLE public.users
+    ADD COLUMN IF NOT EXISTS password_hash text;
+
+-- Ensure seeded/legacy rows have a non-null password hash
+UPDATE public.users
+SET password_hash = public.crypt('ChangeMe123!', public.gen_salt('bf'))
+WHERE password_hash IS NULL;
+
+ALTER TABLE public.users
+    ALTER COLUMN password_hash SET NOT NULL;
 
 --
 -- TOC entry 214 (class 1259 OID 49744)

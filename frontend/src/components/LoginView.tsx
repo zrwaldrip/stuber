@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Mail, Lock, Loader2, UserPlus, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import Logo from "./Logo";
 import { toast } from "sonner";
 
 interface LoginViewProps {
-  onLogin: () => void;
+  onLogin: (user: { user_id: number; email: string; username: string }) => void;
 }
 
 const LoginView = ({ onLogin }: LoginViewProps) => {
@@ -17,16 +17,77 @@ const LoginView = ({ onLogin }: LoginViewProps) => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [name, setName] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+
+  const isByuEmail = (value: string) =>
+    /^[^\s@]+@byu\.edu$/i.test(value.trim());
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      toast.success(isSignUp ? "Account created!" : "Welcome back!", {
-        description: isSignUp ? "Your BYU student account is ready." : "Signed in successfully.",
+    try {
+      if (isSignUp) {
+        if (!isByuEmail(email)) {
+          toast.error("Use a @byu.edu email", {
+            description: "Only BYU email addresses can create an account.",
+          });
+          return;
+        }
+        const resp = await fetch(`${API_BASE_URL}/api/auth/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password, fullName: name }),
+        });
+
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          const msg = (data && typeof data.error === "string" && data.error) || "Could not create account";
+          toast.error(msg);
+          return;
+        }
+
+        const user = data?.user;
+        if (!user?.user_id) {
+          toast.error("Sign-up failed", { description: "Server response was missing user info." });
+          return;
+        }
+
+        localStorage.setItem("blueride.user", JSON.stringify(user));
+        toast.success("Account created!", { description: "You're signed in." });
+        onLogin(user);
+        return;
+      }
+
+      const resp = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: email, password }),
       });
-      onLogin();
-    }, 1200);
+
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        const msg = (data && typeof data.error === "string" && data.error) || "Sign-in failed";
+        toast.error(msg);
+        return;
+      }
+
+      const user = data?.user;
+      if (!user?.user_id) {
+        toast.error("Sign-in failed", { description: "Server response was missing user info." });
+        return;
+      }
+
+      localStorage.setItem("blueride.user", JSON.stringify(user));
+      toast.success("Welcome back!", { description: "Signed in successfully." });
+      onLogin(user);
+    } catch (err) {
+      console.error(err);
+      toast.error(isSignUp ? "Sign-up failed" : "Sign-in failed", {
+        description: "Could not reach the server.",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -41,9 +102,9 @@ const LoginView = ({ onLogin }: LoginViewProps) => {
 
         <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
           {/* Trust badges */}
-          <div className="mb-5 flex items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2">
-            <ShieldCheck className="h-4 w-4 text-accent-foreground" />
-            <span className="text-xs font-medium text-accent-foreground">Verified BYU Students Only</span>
+          <div className="mb-5 flex items-center justify-center gap-2 rounded-lg bg-navy px-3 py-2">
+            <ShieldCheck className="h-4 w-4 text-primary-foreground" />
+            <span className="text-xs font-medium text-primary-foreground">Verified BYU Students Only</span>
           </div>
 
           <h2 className="mb-5 text-center text-lg font-semibold text-foreground">
@@ -76,8 +137,12 @@ const LoginView = ({ onLogin }: LoginViewProps) => {
                   onChange={(e) => setEmail(e.target.value)}
                   className="pl-10"
                   required
+                  autoComplete="email"
                 />
               </div>
+              {isSignUp ? (
+                <p className="text-xs text-muted-foreground">You must use an address ending in @byu.edu.</p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="password" className="text-sm font-medium text-foreground">Password</Label>
@@ -101,14 +166,14 @@ const LoginView = ({ onLogin }: LoginViewProps) => {
             </Button>
           </form>
 
-          <div className="mt-4 space-y-2">
+          {/* <div className="mt-4 space-y-2">
             {!isSignUp && (
               <button className="w-full text-center text-sm text-primary hover:underline">
                 Forgot password?
               </button>
-            )}
+            )} */}
             <div className="flex items-center justify-center gap-1 text-sm text-muted-foreground">
-              <span>{isSignUp ? "Already have an account?" : "New to STÜBER?"}</span>
+              <span>{isSignUp ? "Already have an account?" : "New to Blue Ride?"}</span>
               <button
                 type="button"
                 onClick={() => setIsSignUp(!isSignUp)}
@@ -125,7 +190,7 @@ const LoginView = ({ onLogin }: LoginViewProps) => {
           </div>
         </div>
       </div>
-    </div>
+    // </div>
   );
 };
 
