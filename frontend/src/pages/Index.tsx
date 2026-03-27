@@ -12,7 +12,7 @@ const AppContent = () => {
   const [currentView, setCurrentView] = useState<View>("login");
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
     try {
-      const raw = localStorage.getItem("stuber.user");
+      const raw = localStorage.getItem("blueride.user");
       if (!raw) return false;
       const parsed = JSON.parse(raw);
       return typeof parsed?.user_id === "number";
@@ -22,7 +22,7 @@ const AppContent = () => {
   });
   const [userId, setUserId] = useState<number | null>(() => {
     try {
-      const raw = localStorage.getItem("stuber.user");
+      const raw = localStorage.getItem("blueride.user");
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       return typeof parsed?.user_id === "number" ? parsed.user_id : null;
@@ -40,7 +40,7 @@ const AppContent = () => {
   const handleLogout = () => {
     setIsLoggedIn(false);
     setUserId(null);
-    localStorage.removeItem("stuber.user");
+    localStorage.removeItem("blueride.user");
     setCurrentView("login");
   };
 

@@ -281,7 +281,7 @@ const ProfileView = ({ userId }: { userId: number }) => {
               </TooltipTrigger>
               <TooltipContent className="max-w-[200px] text-xs">
                 <p className="font-semibold">Verified BYU Student</p>
-                <p className="text-muted-foreground">Student status and vehicle info have been verified by STÜBER.</p>
+                <p className="text-muted-foreground">Student status and vehicle info have been verified by Blue Ride.</p>
               </TooltipContent>
             </Tooltip>
           </div>
