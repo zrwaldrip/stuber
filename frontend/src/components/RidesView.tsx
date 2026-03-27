@@ -23,7 +23,8 @@ import RideDriverProfileModal from "@/components/RideDriverProfileModal";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
-type SortMode = "time" | "seats";
+type SortMode = "time" | "seats" | "driver" | "routes";
+type AlphaSortDirection = "asc" | "desc";
 
 type RideRow = {
   offer_id: number;
@@ -60,6 +61,9 @@ const RidesView = () => {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("time");
+  const [alphaSortDirection, setAlphaSortDirection] = useState<AlphaSortDirection>("asc");
+  const [routeFromFilter, setRouteFromFilter] = useState("__all__");
+  const [routeToFilter, setRouteToFilter] = useState("__all__");
   const [showFilters, setShowFilters] = useState(false);
   const [rides, setRides] = useState<RideRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,13 +119,44 @@ const RidesView = () => {
       });
     }
 
+    if (sortMode === "routes") {
+      if (routeFromFilter !== "__all__") {
+        result = result.filter((r) => (r.from_location_name ?? "") === routeFromFilter);
+      }
+      if (routeToFilter !== "__all__") {
+        result = result.filter((r) => (r.to_location_name ?? "") === routeToFilter);
+      }
+    }
+
     result.sort((a, b) => {
       if (sortMode === "seats") return (b.available_seats ?? 0) - (a.available_seats ?? 0);
-      return new Date(a.departure_time).getTime() - new Date(b.departure_time).getTime();
+      if (sortMode === "time" || sortMode === "routes") {
+        return new Date(a.departure_time).getTime() - new Date(b.departure_time).getTime();
+      }
+
+      const direction = alphaSortDirection === "asc" ? 1 : -1;
+
+      const driverA = `${a.driver_first_name ?? ""} ${a.driver_last_name ?? ""}`.trim() || a.driver_username || "";
+      const driverB = `${b.driver_first_name ?? ""} ${b.driver_last_name ?? ""}`.trim() || b.driver_username || "";
+      return direction * driverA.localeCompare(driverB, undefined, { sensitivity: "base" });
     });
 
     return result;
-  }, [rides, searchQuery, sortMode, currentUserId]);
+  }, [rides, searchQuery, sortMode, alphaSortDirection, routeFromFilter, routeToFilter, currentUserId]);
+
+  const isAlphabeticalSort = sortMode === "driver";
+
+  const routeFromOptions = useMemo(() => {
+    return Array.from(new Set(rides.map((r) => r.from_location_name).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+  }, [rides]);
+
+  const routeToOptions = useMemo(() => {
+    return Array.from(new Set(rides.map((r) => r.to_location_name).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" })
+    );
+  }, [rides]);
 
   const handleRefresh = () => {
     fetchRides();
@@ -172,17 +207,76 @@ const RidesView = () => {
         </div>
 
         {showFilters && (
-          <div className="flex items-center gap-2 animate-fade-in">
-            <span className="text-xs font-medium text-muted-foreground">Sort by:</span>
-            <Select value={sortMode} onValueChange={(v) => setSortMode(v as SortMode)}>
-              <SelectTrigger className="h-8 w-[140px] text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="time">Departure Time</SelectItem>
-                <SelectItem value="seats">Available Seats</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="mt-4 animate-fade-in">
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-2 pt-1 pb-2">
+              <span className="whitespace-nowrap pt-1 text-xs font-medium text-muted-foreground">Sort by:</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <Select value={sortMode} onValueChange={(v) => setSortMode(v as SortMode)}>
+                  <SelectTrigger className="h-8 w-[170px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="time">Departure Time</SelectItem>
+                    <SelectItem value="seats">Available Seats</SelectItem>
+                    <SelectItem value="driver">Driver</SelectItem>
+                    <SelectItem value="routes">Routes</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {isAlphabeticalSort && (
+                  <>
+                    <span className="whitespace-nowrap text-xs font-medium text-muted-foreground">Order:</span>
+                    <Select
+                      value={alphaSortDirection}
+                      onValueChange={(v) => setAlphaSortDirection(v as AlphaSortDirection)}
+                    >
+                      <SelectTrigger className="h-8 w-[100px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="asc">A-Z</SelectItem>
+                        <SelectItem value="desc">Z-A</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </>
+                )}
+              </div>
+
+              {sortMode === "routes" && (
+                <>
+                  <div aria-hidden="true" />
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <Select value={routeFromFilter} onValueChange={setRouteFromFilter}>
+                      <SelectTrigger className="h-8 w-full min-w-[170px] text-xs">
+                        <SelectValue placeholder="Departure" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">All Departures</SelectItem>
+                        {routeFromOptions.map((name) => (
+                          <SelectItem key={`from-${name}`} value={name}>
+                            {name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Select value={routeToFilter} onValueChange={setRouteToFilter}>
+                      <SelectTrigger className="h-8 w-full min-w-[170px] text-xs">
+                        <SelectValue placeholder="Destination" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">All Destinations</SelectItem>
+                        {routeToOptions.map((name) => (
+                          <SelectItem key={`to-${name}`} value={name}>
+                            {name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>

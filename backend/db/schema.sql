@@ -311,7 +311,7 @@ ALTER TABLE public.users
 
 -- Ensure seeded/legacy rows have a non-null password hash
 UPDATE public.users
-SET password_hash = crypt('ChangeMe123!', gen_salt('bf'))
+SET password_hash = public.crypt('ChangeMe123!', public.gen_salt('bf'))
 WHERE password_hash IS NULL;
 
 ALTER TABLE public.users
