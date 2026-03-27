@@ -49,13 +49,13 @@ const MyRidesView = () => {
   const missBadge = (count: number) => {
     if (count === 0) return null;
     if (count === 1) return (
-      <Badge variant="outline" className="border-yellow-500 text-yellow-600 text-xs gap-1">
+      <Badge variant="outline" className="border-warning/60 bg-warning-muted text-warning-foreground text-xs gap-1">
         <AlertTriangle className="h-3 w-3" />
         1 miss
       </Badge>
     );
     if (count === 2) return (
-      <Badge variant="outline" className="border-orange-500 text-orange-600 text-xs gap-1">
+      <Badge variant="outline" className="border-warning bg-warning-muted text-warning-foreground text-xs gap-1">
         <AlertTriangle className="h-3 w-3" />
         2 misses — warning
       </Badge>
@@ -72,27 +72,27 @@ const MyRidesView = () => {
     <div className="mx-auto max-w-lg animate-fade-in px-4 py-6 pb-24 space-y-8">
       <div>
         <h1 className="text-2xl font-semibold text-foreground">My Rides</h1>
-        <p className="text-sm text-muted-foreground">Your bookings, subscriptions, and posted rides</p>
+        <p className="text-sm text-muted-foreground dark:text-foreground/80">Your bookings, subscriptions, and posted rides</p>
       </div>
 
       {/* ── My Subscriptions (as rider) ─────────────────────────────── */}
       <section>
         <div className="mb-3 flex items-center gap-2">
-          <Bell className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">My Subscriptions</h2>
+          <Bell className="h-4 w-4 text-primary dark:text-accent" />
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-foreground/85">My Subscriptions</h2>
           {activeSubscriptions.length > 0 && (
             <Badge variant="secondary" className="text-xs">{activeSubscriptions.length}</Badge>
           )}
         </div>
-        <p className="mb-3 text-xs text-muted-foreground">
+        <p className="mb-3 text-xs text-muted-foreground dark:text-foreground/75">
           You're auto-booked on these recurring rides every week. 3 no-shows and your subscription is cancelled.
         </p>
 
         {activeSubscriptions.length === 0 ? (
-          <div className="rounded-xl border border-border bg-card p-6 text-center">
+          <div className="rounded-xl border border-border/70 bg-card p-6 text-center dark:border-white/15">
             <BookMarked className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
             <p className="text-sm font-medium text-foreground">No active subscriptions</p>
-            <p className="text-xs text-muted-foreground">Subscribe to a recurring ride from Find a Ride.</p>
+            <p className="text-xs text-muted-foreground dark:text-foreground/75">Subscribe to a recurring ride from Find a Ride.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -105,12 +105,12 @@ const MyRidesView = () => {
               return (
                 <div
                   key={sub.id}
-                  className="animate-slide-up rounded-xl border border-border bg-card p-4 shadow-sm"
+                  className="animate-slide-up rounded-xl border border-border/70 bg-card p-4 shadow-sm dark:border-white/15"
                   style={{ animationDelay: `${i * 50}ms`, animationFillMode: "both" }}
                 >
                   <div className="mb-2 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                      <MapPin className="h-4 w-4 shrink-0 text-primary" />
+                      <MapPin className="h-4 w-4 shrink-0 text-primary dark:text-accent" />
                       <span>{from?.name ?? "Unknown"}</span>
                       <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       <span>{to?.name ?? "Unknown"}</span>
@@ -121,7 +121,7 @@ const MyRidesView = () => {
                     </Badge>
                   </div>
 
-                  <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground dark:text-foreground/75">
                     <span className="flex items-center gap-1.5">
                       <User className="h-3.5 w-3.5" />
                       <span className="font-medium text-foreground">{driver?.name}</span>
@@ -131,7 +131,7 @@ const MyRidesView = () => {
                       {ride?.departureTime} weekly
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <Star className="h-3.5 w-3.5 fill-primary text-primary" />
+                      <Star className="h-3.5 w-3.5 fill-primary text-primary dark:fill-accent dark:text-accent" />
                       {driver?.rating.toFixed(1)} ({driver?.totalRides} rides)
                     </span>
                     <span className="flex items-center gap-1.5">
@@ -144,7 +144,7 @@ const MyRidesView = () => {
                     <div className="flex items-center gap-2">
                       {missBadge(sub.missedCount)}
                       {sub.missedCount === 0 && (
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-muted-foreground dark:text-foreground/75">
                           Since {new Date(sub.subscribedAt).toLocaleDateString()}
                         </span>
                       )}
@@ -152,7 +152,7 @@ const MyRidesView = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-destructive"
+                      className="h-7 gap-1.5 text-xs text-foreground/80 hover:text-destructive"
                       onClick={() => handleUnsubscribe(sub.id, sub.recurringRideId)}
                     >
                       <BellOff className="h-3 w-3" />
@@ -172,18 +172,18 @@ const MyRidesView = () => {
       {/* ── One-time Booked Rides ───────────────────────────────────── */}
       <section>
         <div className="mb-3 flex items-center gap-2">
-          <Ticket className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">One-Time Bookings</h2>
+          <Ticket className="h-4 w-4 text-primary dark:text-accent" />
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-foreground/85">One-Time Bookings</h2>
           {bookedRides.length > 0 && (
             <Badge variant="secondary" className="text-xs">{bookedRides.length}</Badge>
           )}
         </div>
 
         {bookedRides.length === 0 ? (
-          <div className="rounded-xl border border-border bg-card p-6 text-center">
+          <div className="rounded-xl border border-border/70 bg-card p-6 text-center dark:border-white/15">
             <Ticket className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
             <p className="text-sm font-medium text-foreground">No one-time bookings</p>
-            <p className="text-xs text-muted-foreground">Book a single ride from Find a Ride.</p>
+            <p className="text-xs text-muted-foreground dark:text-foreground/75">Book a single ride from Find a Ride.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -196,12 +196,12 @@ const MyRidesView = () => {
               return (
                 <div
                   key={ride.id}
-                  className="animate-slide-up rounded-xl border border-border bg-card p-4 shadow-sm"
+                  className="animate-slide-up rounded-xl border border-border/70 bg-card p-4 shadow-sm dark:border-white/15"
                   style={{ animationDelay: `${i * 50}ms`, animationFillMode: "both" }}
                 >
                   <div className="mb-2 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                      <MapPin className="h-4 w-4 shrink-0 text-primary" />
+                      <MapPin className="h-4 w-4 shrink-0 text-primary dark:text-accent" />
                       <span>{from?.name ?? "Unknown"}</span>
                       <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       <span>{to?.name ?? "Unknown"}</span>
@@ -210,12 +210,12 @@ const MyRidesView = () => {
                       variant="outline"
                       className={booking?.status === "confirmed"
                         ? "border-primary bg-accent text-accent-foreground text-xs"
-                        : "border-yellow-500 text-yellow-600 text-xs"}
+                        : "border-warning bg-warning-muted text-warning-foreground text-xs"}
                     >
                       {booking?.status === "confirmed" ? "Confirmed" : "Pending"}
                     </Badge>
                   </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground dark:text-foreground/75">
                     <span className="flex items-center gap-1.5">
                       <User className="h-3.5 w-3.5" />
                       <span className="font-medium text-foreground">{driver?.name}</span>
@@ -225,7 +225,7 @@ const MyRidesView = () => {
                       {ride.departureTime} · {ride.date}
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <Star className="h-3.5 w-3.5 fill-primary text-primary" />
+                      <Star className="h-3.5 w-3.5 fill-primary text-primary dark:fill-accent dark:text-accent" />
                       {driver?.rating.toFixed(1)} ({driver?.totalRides} rides)
                     </span>
                     <span className="flex items-center gap-1.5">
@@ -246,21 +246,21 @@ const MyRidesView = () => {
       {/* ── My Posted Rides (driver view) ───────────────────────────── */}
       <section>
         <div className="mb-3 flex items-center gap-2">
-          <RepeatIcon className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">My Posted Rides</h2>
+          <RepeatIcon className="h-4 w-4 text-primary dark:text-accent" />
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-foreground/85">My Posted Rides</h2>
           {myPostedRides.length > 0 && (
             <Badge variant="secondary" className="text-xs">{myPostedRides.length}</Badge>
           )}
         </div>
-        <p className="mb-3 text-xs text-muted-foreground">
+        <p className="mb-3 text-xs text-muted-foreground dark:text-foreground/75">
           Recurring rides you drive. Mark no-shows — riders are auto-removed at 3.
         </p>
 
         {myPostedRides.length === 0 ? (
-          <div className="rounded-xl border border-border bg-card p-6 text-center">
+          <div className="rounded-xl border border-border/70 bg-card p-6 text-center dark:border-white/15">
             <RepeatIcon className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
             <p className="text-sm font-medium text-foreground">No recurring rides posted</p>
-            <p className="text-xs text-muted-foreground">Post a recurring ride to manage your riders here.</p>
+            <p className="text-xs text-muted-foreground dark:text-foreground/75">Post a recurring ride to manage your riders here.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -274,12 +274,12 @@ const MyRidesView = () => {
               return (
                 <div
                   key={ride.id}
-                  className="animate-slide-up rounded-xl border border-border bg-card p-4 shadow-sm"
+                  className="animate-slide-up rounded-xl border border-border/70 bg-card p-4 shadow-sm dark:border-white/15"
                   style={{ animationDelay: `${i * 50}ms`, animationFillMode: "both" }}
                 >
                   <div className="mb-3 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                      <MapPin className="h-4 w-4 shrink-0 text-primary" />
+                      <MapPin className="h-4 w-4 shrink-0 text-primary dark:text-accent" />
                       <span>{from?.name ?? "Unknown"}</span>
                       <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       <span>{to?.name ?? "Unknown"}</span>
@@ -290,18 +290,18 @@ const MyRidesView = () => {
                     </Badge>
                   </div>
 
-                  <div className="mb-1 text-xs text-muted-foreground">
+                  <div className="mb-1 text-xs text-muted-foreground dark:text-foreground/75">
                     {ride.totalSeats - ride.availableSeats}/{ride.totalSeats} seats filled
                   </div>
 
                   {subscribers.length === 0 ? (
-                    <p className="text-xs text-muted-foreground italic">No subscribers yet.</p>
+                    <p className="text-xs text-muted-foreground dark:text-foreground/75 italic">No subscribers yet.</p>
                   ) : (
                     <div className="mt-2 space-y-2">
                       {subscribers.map((sub) => (
                         <div
                           key={sub.id}
-                          className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2"
+                          className="flex items-center justify-between rounded-lg bg-muted/60 px-3 py-2 dark:bg-muted/70"
                         >
                           <div className="flex items-center gap-2">
                             <User className="h-3.5 w-3.5 text-muted-foreground" />
@@ -311,7 +311,7 @@ const MyRidesView = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-6 gap-1 text-xs text-muted-foreground hover:text-destructive"
+                            className="h-6 gap-1 text-xs text-foreground/80 hover:text-destructive"
                             onClick={() => handleMarkNoShow(sub.id, sub.riderName ?? "Rider", sub.missedCount)}
                           >
                             <UserX className="h-3 w-3" />

@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
+import { useAppState } from "@/store/AppContext";
 
 interface PostRideViewProps {
   userId: number;
@@ -28,6 +29,7 @@ const WEEKDAYS = [
 ];
 
 const PostRideView = ({ userId, onComplete }: PostRideViewProps) => {
+  const { refreshLiveRideCount } = useAppState();
   type LocationRow = { location_id: number; name: string; location_type?: string | null };
   const [locations, setLocations] = useState<LocationRow[]>([]);
   const [loadingLocations, setLoadingLocations] = useState(false);
@@ -151,6 +153,7 @@ const PostRideView = ({ userId, onComplete }: PostRideViewProps) => {
         throw new Error(error.error || "Failed to post ride");
       }
 
+      await refreshLiveRideCount();
       toast.success("Ride posted successfully!", { description: `${fromLocName} → ${toLocName}` });
       onComplete();
     } catch (error) {

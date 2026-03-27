@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import LoginView from "@/components/LoginView";
 import ProfileView from "@/components/ProfileView";
 import RidesView from "@/components/RidesView";
@@ -8,28 +8,22 @@ import AppHeader, { type View } from "@/components/AppHeader";
 import BottomNav from "@/components/BottomNav";
 import { AppProvider } from "@/store/AppContext";
 
+const getStoredUserId = () => {
+  try {
+    const raw = localStorage.getItem("blueride.user");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const userId = Number(parsed?.user_id);
+    return Number.isFinite(userId) ? userId : null;
+  } catch {
+    return null;
+  }
+};
+
 const AppContent = () => {
-  const [currentView, setCurrentView] = useState<View>("login");
-  const [isLoggedIn, setIsLoggedIn] = useState(() => {
-    try {
-      const raw = localStorage.getItem("blueride.user");
-      if (!raw) return false;
-      const parsed = JSON.parse(raw);
-      return typeof parsed?.user_id === "number";
-    } catch {
-      return false;
-    }
-  });
-  const [userId, setUserId] = useState<number | null>(() => {
-    try {
-      const raw = localStorage.getItem("blueride.user");
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      return typeof parsed?.user_id === "number" ? parsed.user_id : null;
-    } catch {
-      return null;
-    }
-  });
+  const [userId, setUserId] = useState<number | null>(() => getStoredUserId());
+  const [isLoggedIn, setIsLoggedIn] = useState(() => getStoredUserId() != null);
+  const [currentView, setCurrentView] = useState<View>(() => (getStoredUserId() != null ? "rides" : "login"));
 
   const handleLogin = (user: { user_id: number }) => {
     setIsLoggedIn(true);
@@ -44,24 +38,33 @@ const AppContent = () => {
     setCurrentView("login");
   };
 
+  useEffect(() => {
+    if (!isLoggedIn && currentView !== "login") {
+      setCurrentView("login");
+      return;
+    }
+
+    if (isLoggedIn && currentView === "login") {
+      setCurrentView("rides");
+    }
+  }, [isLoggedIn, currentView]);
+
   return (
     <div className="min-h-screen bg-background">
       <AppHeader
-        currentView={currentView}
         onNavigate={setCurrentView}
         isLoggedIn={isLoggedIn}
-        onLogout={handleLogout}
       />
       <main>
         {currentView === "login" && <LoginView onLogin={handleLogin} />}
-        {currentView === "profile" && userId != null && <ProfileView userId={userId} />}
+        {currentView === "profile" && userId != null && <ProfileView userId={userId} onLogout={handleLogout} />}
         {currentView === "rides" && <RidesView />}
         {currentView === "post" && userId != null && (
           <PostRideView userId={userId} onComplete={() => setCurrentView("rides")} />
         )}
         {currentView === "my-rides" && <MyRidesView />}
       </main>
-      {isLoggedIn && <BottomNav currentView={currentView} onNavigate={setCurrentView} />}
+      {isLoggedIn && currentView !== "login" && <BottomNav currentView={currentView} onNavigate={setCurrentView} />}
     </div>
   );
 };

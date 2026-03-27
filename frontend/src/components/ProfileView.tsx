@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BadgeCheck, Car, Star, Shield, Award, Route, Mail, Phone } from "lucide-react";
+import { BadgeCheck, Car, Star, Shield, Award, Route, Mail, Phone, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -61,7 +61,12 @@ const parseCarMakeModel = (input: string) => {
   return { year, make, model };
 };
 
-const ProfileView = ({ userId }: { userId: number }) => {
+interface ProfileViewProps {
+  userId: number;
+  onLogout: () => void;
+}
+
+const ProfileView = ({ userId, onLogout }: ProfileViewProps) => {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [username, setUsername] = useState("");
@@ -323,6 +328,12 @@ const ProfileView = ({ userId }: { userId: number }) => {
             Edit Profile
           </Button>
           <Button variant="outline" className="flex-1 text-sm">Share Profile</Button>
+        </div>
+        <div className="mb-6">
+          <Button variant="destructive" className="w-full gap-2 text-sm" onClick={onLogout}>
+            <LogOut className="h-4 w-4" />
+            Sign Out
+          </Button>
         </div>
 
         {/* Info cards — data from the API only (no demo major, location, or stock photos) */}

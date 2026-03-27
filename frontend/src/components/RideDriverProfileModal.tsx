@@ -38,6 +38,20 @@ type RideRow = {
   car_photo_path?: string | null;
 };
 
+const formatDateTimeNoSeconds = (value: string) => {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    return value.replace(/:(\d{2})(?::\d{2})?/, "");
+  }
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
 type DriverProfile = {
   userId: number;
   firstName: string;
@@ -161,12 +175,7 @@ const RideDriverProfileModal = ({
                   <div className="mt-1 flex items-center gap-2 text-muted-foreground">
                     <Clock className="h-3 w-3" />
                     <span>
-                      {(() => {
-                        const d = new Date(r.departure_time);
-                        return Number.isNaN(d.getTime())
-                          ? r.departure_time
-                          : d.toLocaleString();
-                      })()}
+                      {formatDateTimeNoSeconds(r.departure_time)}
                     </span>
                   </div>
                   <div className="mt-1 text-muted-foreground">

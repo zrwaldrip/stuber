@@ -47,6 +47,20 @@ type RideRow = {
   car_photo_path?: string | null;
 };
 
+const formatDateTimeNoSeconds = (value: string) => {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    return value.replace(/:(\d{2})(?::\d{2})?/, "");
+  }
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
 const RidesView = () => {
   const currentUserId = useMemo(() => {
     try {
@@ -181,9 +195,9 @@ const RidesView = () => {
       <div className="mb-1 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Available Rides</h1>
-          <p className="text-sm text-muted-foreground">{filteredRides.length} rides near you</p>
+          <p className="text-sm text-muted-foreground dark:text-foreground/80">{filteredRides.length} rides near you</p>
         </div>
-        <Button variant="ghost" size="sm" onClick={handleRefresh} className="text-xs text-muted-foreground">
+        <Button variant="ghost" size="sm" onClick={handleRefresh} className="text-xs text-foreground/80 hover:text-foreground">
           Refresh
         </Button>
       </div>
@@ -200,7 +214,7 @@ const RidesView = () => {
           />
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`absolute right-3 top-1/2 -translate-y-1/2 rounded p-0.5 transition-colors ${showFilters ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+            className={`absolute right-3 top-1/2 -translate-y-1/2 rounded p-0.5 transition-colors ${showFilters ? "text-primary dark:text-accent" : "text-foreground/70 hover:text-foreground"}`}
           >
             <SlidersHorizontal className="h-4 w-4" />
           </button>
@@ -209,7 +223,7 @@ const RidesView = () => {
         {showFilters && (
           <div className="mt-4 animate-fade-in">
             <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 gap-y-2 pt-1 pb-2">
-              <span className="whitespace-nowrap pt-1 text-xs font-medium text-muted-foreground">Sort by:</span>
+              <span className="whitespace-nowrap pt-1 text-xs font-medium text-foreground/80">Sort by:</span>
               <div className="flex flex-wrap items-center gap-2">
                 <Select value={sortMode} onValueChange={(v) => setSortMode(v as SortMode)}>
                   <SelectTrigger className="h-8 w-[170px] text-xs">
@@ -225,7 +239,7 @@ const RidesView = () => {
 
                 {isAlphabeticalSort && (
                   <>
-                    <span className="whitespace-nowrap text-xs font-medium text-muted-foreground">Order:</span>
+                    <span className="whitespace-nowrap text-xs font-medium text-foreground/80">Order:</span>
                     <Select
                       value={alphaSortDirection}
                       onValueChange={(v) => setAlphaSortDirection(v as AlphaSortDirection)}
@@ -283,22 +297,22 @@ const RidesView = () => {
 
       <div className="space-y-3">
         {loading && (
-          <div className="rounded-xl border border-border bg-card p-6 text-center">
+          <div className="rounded-xl border border-border/70 bg-card p-6 text-center dark:border-white/15">
             <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Loading rides...</p>
+            <p className="text-sm text-muted-foreground dark:text-foreground/75">Loading rides...</p>
           </div>
         )}
         {filteredRides.length === 0 && (
-          <div className="rounded-xl border border-border bg-card p-8 text-center">
+          <div className="rounded-xl border border-border/70 bg-card p-8 text-center dark:border-white/15">
             <MapPin className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
             <p className="text-sm font-medium text-foreground">No rides found</p>
-            <p className="text-xs text-muted-foreground">Try adjusting your search or check back later.</p>
+            <p className="text-xs text-muted-foreground dark:text-foreground/75">Try adjusting your search or check back later.</p>
           </div>
         )}
 
         {!loading && filteredRides.map((ride, i) => {
           const driverName = `${ride.driver_first_name ?? ""} ${ride.driver_last_name ?? ""}`.trim() || ride.driver_username;
-          const departureText = new Date(ride.departure_time).toLocaleString();
+          const departureText = formatDateTimeNoSeconds(ride.departure_time);
           const vehicleText = [ride.car_color, ride.car_year, ride.car_make, ride.car_model]
             .filter(Boolean)
             .join(" ");
@@ -306,13 +320,13 @@ const RidesView = () => {
           return (
             <div
               key={ride.offer_id}
-              className="animate-slide-up rounded-xl border border-border bg-card p-4 shadow-sm transition-shadow hover:shadow-md"
+              className="animate-slide-up rounded-xl border border-border/70 bg-card p-4 shadow-sm transition-shadow hover:shadow-md dark:border-white/15"
               style={{ animationDelay: `${i * 50}ms`, animationFillMode: "both" }}
             >
               {/* Route */}
               <div className="mb-3 flex items-start justify-between">
                 <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <MapPin className="h-4 w-4 shrink-0 text-primary" />
+                  <MapPin className="h-4 w-4 shrink-0 text-primary dark:text-accent" />
                   <span>{ride.from_location_name ?? "Unknown"}</span>
                   <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   <span>{ride.to_location_name ?? "Unknown"}</span>
@@ -320,7 +334,7 @@ const RidesView = () => {
               </div>
 
               {/* Details grid */}
-              <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+              <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-muted-foreground dark:text-foreground/75">
                 <span className="flex items-center gap-1.5">
                   <User className="h-3.5 w-3.5" />
                   <button
@@ -347,7 +361,7 @@ const RidesView = () => {
                   </button>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Shield className="h-3 w-3 text-primary" />
+                      <Shield className="h-3 w-3 text-primary dark:text-accent" />
                     </TooltipTrigger>
                     <TooltipContent className="text-xs">Verified BYU Student</TooltipContent>
                   </Tooltip>
@@ -379,7 +393,7 @@ const RidesView = () => {
                 <Button
                   size="sm"
                   disabled={ride.available_seats === 0}
-                  className="min-w-[80px] text-xs"
+                  className="min-w-[80px] text-xs dark:bg-accent dark:text-accent-foreground dark:hover:bg-accent/90"
                   onClick={() =>
                     toast.info("Booking flow not wired yet", { description: "Rides are now loaded from the database." })
                   }

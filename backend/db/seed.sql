@@ -45,6 +45,7 @@ VALUES
     (13, 'Liberty on 8th', 'residential', '745 N 100 E, Provo, UT', 40.2464, -111.6568),
     (14, 'The Isles', 'residential', '650 N 300 E, Provo, UT', 40.2449, -111.6528),
     (15, 'LES Stadium Parking', 'campus', '1700 N Canyon Rd, Provo, UT', 40.2581, -111.6575);
+    (16, 'Wyview Park', 'residential', '1990 N 40 W, Provo, UT', 40.2628, -111.6622);
 
 -- Seed one-time ride offers (active)
 INSERT INTO public.ride_offer (
