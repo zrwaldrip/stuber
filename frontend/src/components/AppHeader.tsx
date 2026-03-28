@@ -2,7 +2,7 @@ import { Radio } from "lucide-react";
 import Logo from "./Logo";
 import { useAppState } from "@/store/AppContext";
 
-export type View = "login" | "profile" | "rides" | "post" | "my-rides";
+export type View = "login" | "profile" | "rides" | "post" | "my-rides" | "admin";
 
 interface AppHeaderProps {
   onNavigate: (view: View) => void;

@@ -116,6 +116,35 @@ const ensureImagePathColumns = async () => {
 
 void ensureImagePathColumns();
 
+const ensureUserLevelColumn = async () => {
+  try {
+    await pool.query(`
+      ALTER TABLE public.users
+        ADD COLUMN IF NOT EXISTS user_level text NOT NULL DEFAULT 'user';
+    `);
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'users_user_level_check'
+        ) THEN
+          ALTER TABLE public.users
+            ADD CONSTRAINT users_user_level_check CHECK (user_level IN ('user', 'admin'));
+        END IF;
+      END
+      $$;
+    `);
+  } catch (error) {
+    console.error('Error ensuring user_level column:', error);
+  }
+};
+
+const getActingUserId = (req) => {
+  const raw = req.headers['x-acting-user-id'];
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
+};
+
 // Routes
 
 // Auth: login (email or username + password)
@@ -133,7 +162,7 @@ app.post('/api/auth/login', async (req, res) => {
     const ident = identifier.trim().toLowerCase();
 
     const result = await pool.query(
-      `SELECT user_id, first_name, last_name, username, email, phone, profile_photo_path, car_id
+      `SELECT user_id, first_name, last_name, username, email, phone, profile_photo_path, car_id, user_level
        FROM users
        WHERE (LOWER(email) = $1 OR LOWER(username) = $1)
          AND password_hash = crypt($2, password_hash)
@@ -246,7 +275,7 @@ app.post('/api/auth/register', async (req, res) => {
     const result = await pool.query(
       `INSERT INTO users (first_name, last_name, username, email, phone, password_hash)
        VALUES ($1, $2, $3, $4, $5, crypt($6, gen_salt('bf')))
-       RETURNING user_id, first_name, last_name, username, email, phone, profile_photo_path, car_id`,
+       RETURNING user_id, first_name, last_name, username, email, phone, profile_photo_path, car_id, user_level`,
       [first_name, last_name, username, emailNorm, phone, password]
     );
 
@@ -282,10 +311,26 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// Get all users
+// Get all users (admin only)
 app.get('/api/users', async (req, res) => {
   try {
-    const result = await pool.query('SELECT user_id, first_name, last_name, username, email, profile_photo_path FROM users ORDER BY user_id');
+    const actingUserId = getActingUserId(req);
+    if (actingUserId == null) {
+      return res.status(401).json({ error: 'X-Acting-User-Id header is required' });
+    }
+    const adminCheck = await pool.query(
+      'SELECT 1 FROM users WHERE user_id = $1 AND user_level = $2 LIMIT 1',
+      [actingUserId, 'admin']
+    );
+    if (adminCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const result = await pool.query(
+      `SELECT user_id, first_name, last_name, username, email, phone, user_level, profile_photo_path, car_id
+       FROM users
+       ORDER BY user_id`
+    );
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching users:', error);
@@ -316,7 +361,7 @@ app.get('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
-      'SELECT user_id, first_name, last_name, username, email, phone, profile_photo_path, car_id FROM users WHERE user_id = $1',
+      'SELECT user_id, first_name, last_name, username, email, phone, profile_photo_path, car_id, user_level FROM users WHERE user_id = $1',
       [id]
     );
     
@@ -344,11 +389,77 @@ app.get('/api/users/:id', async (req, res) => {
   }
 });
 
-// Update user details (first name, last name, username, phone)
+// Update user details (self: name/username/phone; admin: may also set email, userLevel)
 app.put('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { firstName, lastName, username, phone } = req.body;
+    const targetUserId = Number(id);
+    if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+      return res.status(400).json({ error: 'Valid user id is required' });
+    }
+
+    const actingUserId = getActingUserId(req);
+    if (actingUserId == null) {
+      return res.status(401).json({ error: 'X-Acting-User-Id header is required' });
+    }
+
+    const actingResult = await pool.query(
+      'SELECT user_id, user_level FROM users WHERE user_id = $1',
+      [actingUserId]
+    );
+    if (actingResult.rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid acting user' });
+    }
+    const actingIsAdmin = actingResult.rows[0].user_level === 'admin';
+    const isSelf = actingUserId === targetUserId;
+
+    if (!isSelf && !actingIsAdmin) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const { firstName, lastName, username, phone, email, userLevel } = req.body ?? {};
+
+    if (!actingIsAdmin && (email !== undefined || userLevel !== undefined)) {
+      return res.status(403).json({ error: 'Only admins can change email or user level' });
+    }
+
+    if (actingIsAdmin && typeof email === 'string' && email.trim() !== '') {
+      const emailNorm = email.trim().toLowerCase();
+      const dup = await pool.query(
+        `SELECT 1 FROM users WHERE LOWER(email) = $1 AND user_id <> $2 LIMIT 1`,
+        [emailNorm, targetUserId]
+      );
+      if (dup.rows.length > 0) {
+        return res.status(409).json({ error: 'Email already in use' });
+      }
+    }
+
+    let nextLevel = null;
+    if (actingIsAdmin && userLevel !== undefined && userLevel !== null) {
+      const lv = typeof userLevel === 'string' ? userLevel.trim().toLowerCase() : '';
+      if (lv !== 'user' && lv !== 'admin') {
+        return res.status(400).json({ error: 'userLevel must be user or admin' });
+      }
+      nextLevel = lv;
+
+      const currentRow = await pool.query('SELECT user_level FROM users WHERE user_id = $1', [targetUserId]);
+      if (currentRow.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      const wasAdmin = currentRow.rows[0].user_level === 'admin';
+      if (wasAdmin && nextLevel === 'user') {
+        const cnt = await pool.query(
+          `SELECT COUNT(*)::int AS c FROM users WHERE user_level = 'admin'`
+        );
+        if (cnt.rows[0].c <= 1) {
+          return res.status(409).json({ error: 'Cannot remove the last admin' });
+        }
+      }
+    }
+
+    const updateEmail = actingIsAdmin && typeof email === 'string';
+    const emailNorm = updateEmail ? email.trim().toLowerCase() : null;
+    const updateLevel = nextLevel != null;
 
     const result = await pool.query(
       `UPDATE users
@@ -356,15 +467,21 @@ app.put('/api/users/:id', async (req, res) => {
          first_name = COALESCE($1, first_name),
          last_name  = COALESCE($2, last_name),
          username   = COALESCE($3, username),
-         phone      = COALESCE($4, phone)
-       WHERE user_id = $5
-       RETURNING user_id, first_name, last_name, username, email, phone, profile_photo_path, car_id`,
+         phone      = COALESCE($4, phone),
+         email      = CASE WHEN $5::boolean THEN COALESCE($6::text, email) ELSE email END,
+         user_level = CASE WHEN $7::boolean THEN $8::text ELSE user_level END
+       WHERE user_id = $9
+       RETURNING user_id, first_name, last_name, username, email, phone, profile_photo_path, car_id, user_level`,
       [
         firstName ?? null,
         lastName ?? null,
         username ?? null,
         phone ?? null,
-        id,
+        updateEmail,
+        emailNorm,
+        updateLevel,
+        nextLevel ?? null,
+        targetUserId,
       ]
     );
 
@@ -376,6 +493,9 @@ app.put('/api/users/:id', async (req, res) => {
   } catch (error) {
     console.error('Error updating user:', error);
 
+    if (error.code === '23514') {
+      return res.status(400).json({ error: 'Invalid user level' });
+    }
     if (error.code === '3D000') {
       return res.status(500).json({
         error: 'Database does not exist. Please run the database setup scripts first.',
@@ -388,6 +508,82 @@ app.put('/api/users/:id', async (req, res) => {
     }
 
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete user (admin only; not self; not last admin)
+app.delete('/api/users/:id', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const targetUserId = Number(req.params.id);
+    if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+      return res.status(400).json({ error: 'Valid user id is required' });
+    }
+
+    const actingUserId = getActingUserId(req);
+    if (actingUserId == null) {
+      return res.status(401).json({ error: 'X-Acting-User-Id header is required' });
+    }
+
+    const adminCheck = await client.query(
+      'SELECT 1 FROM users WHERE user_id = $1 AND user_level = $2 LIMIT 1',
+      [actingUserId, 'admin']
+    );
+    if (adminCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    if (actingUserId === targetUserId) {
+      return res.status(400).json({ error: 'Cannot delete your own account' });
+    }
+
+    const targetResult = await client.query(
+      'SELECT user_id, user_level FROM users WHERE user_id = $1',
+      [targetUserId]
+    );
+    if (targetResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (targetResult.rows[0].user_level === 'admin') {
+      const cnt = await client.query(
+        `SELECT COUNT(*)::int AS c FROM users WHERE user_level = 'admin'`
+      );
+      if (cnt.rows[0].c <= 1) {
+        return res.status(409).json({ error: 'Cannot delete the last admin' });
+      }
+    }
+
+    await client.query('BEGIN');
+
+    await client.query(
+      `DELETE FROM trip
+       WHERE offer_id IN (SELECT offer_id FROM ride_offer WHERE user_id = $1)
+          OR request_id IN (SELECT request_id FROM ride_request WHERE user_id = $1)`,
+      [targetUserId]
+    );
+
+    await client.query('DELETE FROM users WHERE user_id = $1', [targetUserId]);
+
+    await client.query('COMMIT');
+    res.status(204).send();
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error deleting user:', error);
+    if (error.code === '23503') {
+      return res.status(409).json({
+        error: 'Cannot delete user: related records still reference this account. Remove or reassign them first.',
+      });
+    }
+    if (error.code === '3D000') {
+      return res.status(500).json({ error: 'Database does not exist. Please run the database setup scripts first.' });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({ error: 'Database authentication failed. Please check your .env file credentials.' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
   }
 });
 
@@ -1182,7 +1378,10 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+// Start server after user_level migration
+(async () => {
+  await ensureUserLevelColumn();
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+})();

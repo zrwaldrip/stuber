@@ -4,6 +4,7 @@ import ProfileView from "@/components/ProfileView";
 import RidesView from "@/components/RidesView";
 import PostRideView from "@/components/PostRideView";
 import MyRidesView from "@/components/MyRidesView";
+import AdminUsersView from "@/components/AdminUsersView";
 import AppHeader, { type View } from "@/components/AppHeader";
 import BottomNav from "@/components/BottomNav";
 import { AppProvider } from "@/store/AppContext";
@@ -20,12 +21,23 @@ const getStoredUserId = () => {
   }
 };
 
+const isStoredAdmin = () => {
+  try {
+    const raw = localStorage.getItem("blueride.user");
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    return parsed?.user_level === "admin";
+  } catch {
+    return false;
+  }
+};
+
 const AppContent = () => {
   const [userId, setUserId] = useState<number | null>(() => getStoredUserId());
   const [isLoggedIn, setIsLoggedIn] = useState(() => getStoredUserId() != null);
   const [currentView, setCurrentView] = useState<View>(() => (getStoredUserId() != null ? "rides" : "login"));
 
-  const handleLogin = (user: { user_id: number }) => {
+  const handleLogin = (user: { user_id: number; user_level?: string }) => {
     setIsLoggedIn(true);
     setUserId(user.user_id);
     setCurrentView("rides");
@@ -49,6 +61,12 @@ const AppContent = () => {
     }
   }, [isLoggedIn, currentView]);
 
+  useEffect(() => {
+    if (currentView === "admin" && !isStoredAdmin()) {
+      setCurrentView("profile");
+    }
+  }, [currentView]);
+
   return (
     <div className="min-h-screen bg-background">
       <AppHeader
@@ -57,7 +75,12 @@ const AppContent = () => {
       />
       <main>
         {currentView === "login" && <LoginView onLogin={handleLogin} />}
-        {currentView === "profile" && userId != null && <ProfileView userId={userId} onLogout={handleLogout} />}
+        {currentView === "profile" && userId != null && (
+          <ProfileView userId={userId} onLogout={handleLogout} onNavigate={setCurrentView} />
+        )}
+        {currentView === "admin" && userId != null && isStoredAdmin() && (
+          <AdminUsersView actingUserId={userId} onNavigate={setCurrentView} />
+        )}
         {currentView === "rides" && <RidesView />}
         {currentView === "post" && userId != null && (
           <PostRideView userId={userId} onComplete={() => setCurrentView("rides")} />

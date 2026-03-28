@@ -7,11 +7,11 @@ TRUNCATE TABLE public.car RESTART IDENTITY CASCADE;
 TRUNCATE TABLE public.users RESTART IDENTITY CASCADE;
 
 -- Seed users (explicit IDs for clarity)
-INSERT INTO public.users (user_id, first_name, last_name, username, email, phone, password_hash, profile_photo_path, car_id, created_at)
+INSERT INTO public.users (user_id, first_name, last_name, username, email, phone, password_hash, profile_photo_path, car_id, user_level, created_at)
 VALUES
-    (1, 'Marcus', 'Rivera', 'marcusrivera', 'marcus.rivera@byu.edu', '8015550001', crypt('ChangeMe123!', gen_salt('bf')), NULL, NULL, CURRENT_TIMESTAMP),
-    (2, 'John',   'Doe',    'johndoe',      'john.doe@byu.edu',      '8015550002', crypt('ChangeMe123!', gen_salt('bf')), NULL, NULL, CURRENT_TIMESTAMP),
-    (3, 'Jane',   'Doe',    'janedoe',      'jane.doe@byu.edu',      '8015550003', crypt('ChangeMe123!', gen_salt('bf')), NULL, NULL, CURRENT_TIMESTAMP);
+    (1, 'Marcus', 'Rivera', 'marcusrivera', 'marcus.rivera@byu.edu', '8015550001', crypt('ChangeMe123!', gen_salt('bf')), NULL, NULL, 'user', CURRENT_TIMESTAMP),
+    (2, 'John',   'Doe',    'johndoe',      'john.doe@byu.edu',      '8015550002', crypt('ChangeMe123!', gen_salt('bf')), NULL, NULL, 'user', CURRENT_TIMESTAMP),
+    (3, 'Jane',   'Doe',    'janedoe',      'jane.doe@byu.edu',      '8015550003', crypt('ChangeMe123!', gen_salt('bf')), NULL, NULL, 'user', CURRENT_TIMESTAMP);
 
 -- Seed cars; user_id must match existing user rows
 INSERT INTO public.car (car_id, user_id, make, model, color, year, license_plate)
@@ -44,7 +44,7 @@ VALUES
     (12, 'Glenwood Apartments', 'residential', '1565 N University Ave, Provo, UT', 40.2559, -111.6611),
     (13, 'Liberty on 8th', 'residential', '745 N 100 E, Provo, UT', 40.2464, -111.6568),
     (14, 'The Isles', 'residential', '650 N 300 E, Provo, UT', 40.2449, -111.6528),
-    (15, 'LES Stadium Parking', 'campus', '1700 N Canyon Rd, Provo, UT', 40.2581, -111.6575);
+    (15, 'LES Stadium Parking', 'campus', '1700 N Canyon Rd, Provo, UT', 40.2581, -111.6575),
     (16, 'Wyview Park', 'residential', '1990 N 40 W, Provo, UT', 40.2628, -111.6622);
 
 -- Seed one-time ride offers (active)

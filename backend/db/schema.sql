@@ -299,7 +299,9 @@ CREATE TABLE IF NOT EXISTS public.users (
     -- Stores a local filename or relative path for an uploaded image (served from /uploads/*)
     profile_photo_path text,
     car_id integer,
-    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+    user_level text NOT NULL DEFAULT 'user'::text,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT users_user_level_check CHECK ((user_level = ANY (ARRAY['user'::text, 'admin'::text])))
 );
 
 
@@ -316,6 +318,20 @@ WHERE password_hash IS NULL;
 
 ALTER TABLE public.users
     ALTER COLUMN password_hash SET NOT NULL;
+
+ALTER TABLE public.users
+    ADD COLUMN IF NOT EXISTS user_level text NOT NULL DEFAULT 'user';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'users_user_level_check'
+  ) THEN
+    ALTER TABLE public.users
+      ADD CONSTRAINT users_user_level_check CHECK (user_level IN ('user', 'admin'));
+  END IF;
+END
+$$;
 
 --
 -- TOC entry 214 (class 1259 OID 49744)

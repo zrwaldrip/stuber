@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import type { View } from "@/components/AppHeader";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
@@ -41,9 +42,10 @@ function formatVehicleTitle(year: number | null, make: string, model: string) {
 interface ProfileViewProps {
   userId: number;
   onLogout: () => void;
+  onNavigate: (view: View) => void;
 }
 
-const ProfileView = ({ userId, onLogout }: ProfileViewProps) => {
+const ProfileView = ({ userId, onLogout, onNavigate }: ProfileViewProps) => {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [username, setUsername] = useState("");
@@ -58,6 +60,7 @@ const ProfileView = ({ userId, onLogout }: ProfileViewProps) => {
   const [vehicleImageUrl, setVehicleImageUrl] = useState("");
   const [carId, setCarId] = useState<number | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const [userLevel, setUserLevel] = useState<string>("user");
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editFirstName, setEditFirstName] = useState(firstName);
@@ -85,7 +88,26 @@ const ProfileView = ({ userId, onLogout }: ProfileViewProps) => {
           setUsername(typeof user.username === "string" ? user.username : "");
           setEmail(typeof user.email === "string" ? user.email : "");
           setPhone(typeof user.phone === "string" ? user.phone : "");
+          setUserLevel(typeof user.user_level === "string" ? user.user_level : "user");
           setProfileImageUrl(typeof user.profile_photo_path === "string" ? user.profile_photo_path : "");
+
+          try {
+            const raw = localStorage.getItem("blueride.user");
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed?.user_id === userId) {
+                localStorage.setItem(
+                  "blueride.user",
+                  JSON.stringify({
+                    ...parsed,
+                    user_level: user.user_level ?? "user",
+                  })
+                );
+              }
+            }
+          } catch {
+            /* ignore */
+          }
 
           if (user.car_id) {
             setCarId(user.car_id);
@@ -167,6 +189,7 @@ const ProfileView = ({ userId, onLogout }: ProfileViewProps) => {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
+          "X-Acting-User-Id": String(userId),
         },
         body: JSON.stringify({
           firstName: editFirstName.trim() || null,
@@ -273,6 +296,23 @@ const ProfileView = ({ userId, onLogout }: ProfileViewProps) => {
         const updated = await userResponse.json().catch(() => null);
         if (updated && typeof updated.email === "string") setEmail(updated.email);
         if (updated && typeof updated.phone === "string") setPhone(updated.phone);
+        if (updated && typeof updated.user_level === "string") {
+          setUserLevel(updated.user_level);
+          try {
+            const raw = localStorage.getItem("blueride.user");
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed?.user_id === userId) {
+                localStorage.setItem(
+                  "blueride.user",
+                  JSON.stringify({ ...parsed, user_level: updated.user_level })
+                );
+              }
+            }
+          } catch {
+            /* ignore */
+          }
+        }
         setUsername(editUsername.trim());
         setFirstName(editFirstName.trim());
         setLastName(editLastName.trim());
@@ -367,15 +407,26 @@ const ProfileView = ({ userId, onLogout }: ProfileViewProps) => {
         </div>
 
         {/* Actions */}
-        <div className="mb-6 flex gap-3">
-          <Button
-            variant="outline"
-            className="flex-1 text-sm"
-            onClick={handleOpenEdit}
-          >
-            Edit Profile
-          </Button>
-          <Button variant="outline" className="flex-1 text-sm">Share Profile</Button>
+        <div className="mb-6 flex flex-col gap-3">
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              className="flex-1 text-sm"
+              onClick={handleOpenEdit}
+            >
+              Edit Profile
+            </Button>
+            <Button variant="outline" className="flex-1 text-sm">Share Profile</Button>
+          </div>
+          {userLevel === "admin" ? (
+            <Button
+              variant="secondary"
+              className="w-full text-sm"
+              onClick={() => onNavigate("admin")}
+            >
+              Admin — manage users
+            </Button>
+          ) : null}
         </div>
         <div className="mb-6">
           <Button variant="destructive" className="w-full gap-2 text-sm" onClick={onLogout}>
