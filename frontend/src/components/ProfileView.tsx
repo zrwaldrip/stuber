@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import type { View } from "@/components/AppHeader";
+import { mailtoHref, smsHref, telHref } from "@/lib/contactLinks";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
@@ -441,13 +442,33 @@ const ProfileView = ({ userId, onLogout, onNavigate }: ProfileViewProps) => {
           {email ? (
             <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3.5">
               <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <span className="break-all text-sm text-foreground">{email}</span>
+              <a
+                href={mailtoHref(email)}
+                className="break-all text-sm text-primary underline-offset-2 hover:underline"
+              >
+                {email}
+              </a>
             </div>
           ) : null}
           {phone.trim() ? (
-            <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-card p-3.5">
               <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <span className="text-sm text-foreground">{phone}</span>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                <a
+                  href={telHref(phone)}
+                  className="text-primary underline-offset-2 hover:underline"
+                >
+                  {phone}
+                </a>
+                {smsHref(phone) ? (
+                  <a
+                    href={smsHref(phone)}
+                    className="shrink-0 text-primary underline-offset-2 hover:underline"
+                  >
+                    Text
+                  </a>
+                ) : null}
+              </div>
             </div>
           ) : null}
           <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3.5">
