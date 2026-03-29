@@ -38,6 +38,8 @@ type RideRow = {
   driver_first_name: string;
   driver_last_name: string;
   driver_username: string;
+  driver_email?: string | null;
+  driver_phone?: string | null;
   car_year: number | null;
   car_make: string | null;
   car_model: string | null;
@@ -89,6 +91,8 @@ const RidesView = () => {
     firstName: string;
     lastName: string;
     username: string;
+    email?: string | null;
+    phone?: string | null;
     profilePhotoPath?: string | null;
     carYear: number | null;
     carMake: string | null;
@@ -410,6 +414,8 @@ const RidesView = () => {
                         firstName: ride.driver_first_name,
                         lastName: ride.driver_last_name,
                         username: ride.driver_username,
+                        email: ride.driver_email,
+                        phone: ride.driver_phone,
                         profilePhotoPath: ride.driver_profile_photo_path,
                         carYear: ride.car_year,
                         carMake: ride.car_make,

@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { mailtoHref, smsHref, telHref } from "@/lib/contactLinks";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
@@ -157,15 +158,35 @@ const RideDriverProfileModal = ({
               </>
             ) : null}
             {driver?.email ? (
-              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <Mail className="h-3 w-3" />
-                {driver.email}
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5 min-w-0">
+                <Mail className="h-3 w-3 shrink-0" />
+                <a
+                  href={mailtoHref(driver.email)}
+                  className="min-w-0 truncate text-primary underline-offset-2 hover:underline"
+                >
+                  {driver.email}
+                </a>
               </p>
             ) : null}
             {driver?.phone ? (
-              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <Phone className="h-3 w-3" />
-                {driver.phone}
+              <p className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <Phone className="h-3 w-3 shrink-0" />
+                  <a
+                    href={telHref(driver.phone)}
+                    className="text-primary underline-offset-2 hover:underline"
+                  >
+                    {driver.phone}
+                  </a>
+                </span>
+                {smsHref(driver.phone) ? (
+                  <a
+                    href={smsHref(driver.phone)}
+                    className="shrink-0 text-primary underline-offset-2 hover:underline"
+                  >
+                    Text
+                  </a>
+                ) : null}
               </p>
             ) : null}
           </div>

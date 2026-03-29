@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  MapPin, ArrowRight, Clock, User, Car, Ticket, Loader2, Users,
+  MapPin, ArrowRight, Clock, User, Car, Ticket, Loader2, Users, Trash2, UserX,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,8 @@ type BookedRideRow = {
   driver_first_name: string;
   driver_last_name: string;
   driver_username: string;
+  driver_email?: string | null;
+  driver_phone?: string | null;
   driver_profile_photo_path?: string | null;
   car_year?: number | null;
   car_make?: string | null;
@@ -99,6 +101,8 @@ const MyRidesView = () => {
   const [offeredRides, setOfferedRides] = useState<OfferedRideRow[]>([]);
   const [activeRides, setActiveRides] = useState<DriverUpcomingRideRow[]>([]);
   const [cancelingTripId, setCancelingTripId] = useState<number | null>(null);
+  const [deletingOfferId, setDeletingOfferId] = useState<number | null>(null);
+  const [decliningRiderKey, setDecliningRiderKey] = useState<string | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<{
     userId: number;
     firstName: string;
@@ -156,6 +160,68 @@ const MyRidesView = () => {
   useEffect(() => {
     fetchMyRides();
   }, []);
+
+  const handleDeclineRider = async (offerId: number, riderUserId: number) => {
+    if (currentUserId == null) {
+      toast.error("Please sign in to manage rides");
+      return;
+    }
+    if (
+      !window.confirm(
+        "Remove this rider from your ride? They will be notified that their booking was canceled."
+      )
+    ) {
+      return;
+    }
+
+    const key = `${offerId}-${riderUserId}`;
+    setDecliningRiderKey(key);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/rides/${offerId}/decline-booking`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ driverUserId: currentUserId, riderUserId }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || "Could not remove rider");
+      toast.success("Rider removed from your ride");
+      await fetchMyRides();
+    } catch (error) {
+      console.error("Error declining rider:", error);
+      toast.error(error instanceof Error ? error.message : "Could not remove rider");
+    } finally {
+      setDecliningRiderKey(null);
+    }
+  };
+
+  const handleDeleteOfferedRide = async (ride: OfferedRideRow) => {
+    if (currentUserId == null) {
+      toast.error("Please sign in to manage rides");
+      return;
+    }
+    const riderNote =
+      ride.rider_count > 0
+        ? ` This will cancel ${ride.rider_count} booking${ride.rider_count === 1 ? "" : "s"}.`
+        : "";
+    if (!window.confirm(`Delete this posted ride?${riderNote}`)) return;
+
+    setDeletingOfferId(ride.offer_id);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/rides/${ride.offer_id}?userId=${currentUserId}`,
+        { method: "DELETE" }
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || "Failed to delete ride");
+      toast.success("Ride removed");
+      await fetchMyRides();
+    } catch (error) {
+      console.error("Error deleting ride:", error);
+      toast.error(error instanceof Error ? error.message : "Could not delete ride");
+    } finally {
+      setDeletingOfferId(null);
+    }
+  };
 
   const handleCancelBooking = async (ride: BookedRideRow) => {
     if (currentUserId == null) {
@@ -271,6 +337,8 @@ const MyRidesView = () => {
                             firstName: ride.driver_first_name,
                             lastName: ride.driver_last_name,
                             username: ride.driver_username,
+                            email: ride.driver_email,
+                            phone: ride.driver_phone,
                             profilePhotoPath: ride.driver_profile_photo_path,
                             carYear: ride.car_year ?? null,
                             carMake: ride.car_make ?? null,
@@ -384,6 +452,19 @@ const MyRidesView = () => {
                     <p className="text-xs text-muted-foreground">{ride.notes}</p>
                   ) : null}
 
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 text-xs text-destructive hover:text-destructive"
+                      disabled={deletingOfferId === ride.offer_id}
+                      onClick={() => handleDeleteOfferedRide(ride)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {deletingOfferId === ride.offer_id ? "Deleting..." : "Delete ride"}
+                    </Button>
+                  </div>
+
                   <div className="mt-3">
                     <p className="mb-2 text-xs font-medium text-muted-foreground">Booked riders</p>
                     {Array.isArray(ride.riders) && ride.riders.length > 0 ? (
@@ -393,11 +474,11 @@ const MyRidesView = () => {
                           return (
                             <div
                               key={`${ride.offer_id}-${rider.user_id}`}
-                              className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2"
+                              className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2"
                             >
                               <button
                                 type="button"
-                                className="text-left text-xs font-medium text-foreground underline-offset-2 hover:underline"
+                                className="min-w-0 flex-1 text-left text-xs font-medium text-foreground underline-offset-2 hover:underline"
                                 onClick={() => {
                                   setSelectedProfile({
                                     userId: rider.user_id,
@@ -421,7 +502,20 @@ const MyRidesView = () => {
                               >
                                 {riderName}
                               </button>
-                              <Badge variant="outline" className="text-[10px]">Booked</Badge>
+                              <div className="flex shrink-0 items-center gap-1.5">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 gap-1 px-2 text-[10px] text-destructive hover:text-destructive"
+                                  disabled={decliningRiderKey === `${ride.offer_id}-${rider.user_id}`}
+                                  onClick={() => handleDeclineRider(ride.offer_id, rider.user_id)}
+                                >
+                                  <UserX className="h-3 w-3" />
+                                  {decliningRiderKey === `${ride.offer_id}-${rider.user_id}` ? "..." : "Decline"}
+                                </Button>
+                                <Badge variant="outline" className="text-[10px]">Booked</Badge>
+                              </div>
                             </div>
                           );
                         })}

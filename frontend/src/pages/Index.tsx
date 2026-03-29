@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import LoginView from "@/components/LoginView";
 import ProfileView from "@/components/ProfileView";
 import RidesView from "@/components/RidesView";
@@ -8,6 +9,8 @@ import AdminUsersView from "@/components/AdminUsersView";
 import AppHeader, { type View } from "@/components/AppHeader";
 import BottomNav from "@/components/BottomNav";
 import { AppProvider } from "@/store/AppContext";
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 const getStoredUserId = () => {
   try {
@@ -36,6 +39,7 @@ const AppContent = () => {
   const [userId, setUserId] = useState<number | null>(() => getStoredUserId());
   const [isLoggedIn, setIsLoggedIn] = useState(() => getStoredUserId() != null);
   const [currentView, setCurrentView] = useState<View>(() => (getStoredUserId() != null ? "rides" : "login"));
+  const notificationFetchGen = useRef(0);
 
   const handleLogin = (user: { user_id: number; user_level?: string }) => {
     setIsLoggedIn(true);
@@ -66,6 +70,50 @@ const AppContent = () => {
       setCurrentView("profile");
     }
   }, [currentView]);
+
+  useEffect(() => {
+    if (!isLoggedIn || userId == null) return;
+    const gen = ++notificationFetchGen.current;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/notifications?userId=${userId}`);
+        if (!res.ok || cancelled || gen !== notificationFetchGen.current) return;
+        const data = await res.json();
+        const list = Array.isArray(data?.notifications) ? data.notifications : [];
+        if (list.length === 0) return;
+
+        const ids = list
+          .map((n: { notification_id?: number }) => n.notification_id)
+          .filter((id: unknown): id is number => typeof id === "number" && Number.isInteger(id) && id > 0);
+
+        for (const n of list) {
+          if (cancelled || gen !== notificationFetchGen.current) return;
+          if (typeof n?.message === "string") {
+            toast.info("Ride booking canceled", {
+              description: n.message,
+              duration: 12_000,
+            });
+          }
+        }
+
+        if (ids.length > 0 && !cancelled && gen === notificationFetchGen.current) {
+          await fetch(`${API_BASE_URL}/api/notifications/mark-read`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId, notificationIds: ids }),
+          });
+        }
+      } catch (e) {
+        console.error("Failed to load notifications", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, userId]);
 
   return (
     <div className="min-h-screen bg-background">
