@@ -41,6 +41,36 @@ const AppContent = () => {
   const [currentView, setCurrentView] = useState<View>(() => (getStoredUserId() != null ? "rides" : "login"));
   const notificationFetchGen = useRef(0);
 
+  const fetchAndShowNotifications = async (nextUserId: number, gen: number) => {
+    const res = await fetch(`${API_BASE_URL}/api/notifications?userId=${nextUserId}`);
+    if (!res.ok || gen !== notificationFetchGen.current) return;
+    const data = await res.json().catch(() => ({}));
+    const list = Array.isArray(data?.notifications) ? data.notifications : [];
+    if (list.length === 0) return;
+
+    const ids = list
+      .map((n: { notification_id?: number }) => n.notification_id)
+      .filter((id: unknown): id is number => typeof id === "number" && Number.isInteger(id) && id > 0);
+
+    for (const n of list) {
+      if (gen !== notificationFetchGen.current) return;
+      if (typeof n?.message === "string") {
+        toast.info("Notification", {
+          description: n.message,
+          duration: 12_000,
+        });
+      }
+    }
+
+    if (ids.length > 0 && gen === notificationFetchGen.current) {
+      await fetch(`${API_BASE_URL}/api/notifications/mark-read`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: nextUserId, notificationIds: ids }),
+      });
+    }
+  };
+
   const handleLogin = (user: { user_id: number; user_level?: string }) => {
     setIsLoggedIn(true);
     setUserId(user.user_id);
@@ -78,40 +108,28 @@ const AppContent = () => {
 
     (async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/notifications?userId=${userId}`);
-        if (!res.ok || cancelled || gen !== notificationFetchGen.current) return;
-        const data = await res.json();
-        const list = Array.isArray(data?.notifications) ? data.notifications : [];
-        if (list.length === 0) return;
-
-        const ids = list
-          .map((n: { notification_id?: number }) => n.notification_id)
-          .filter((id: unknown): id is number => typeof id === "number" && Number.isInteger(id) && id > 0);
-
-        for (const n of list) {
-          if (cancelled || gen !== notificationFetchGen.current) return;
-          if (typeof n?.message === "string") {
-            toast.info("Ride booking canceled", {
-              description: n.message,
-              duration: 12_000,
-            });
-          }
-        }
-
-        if (ids.length > 0 && !cancelled && gen === notificationFetchGen.current) {
-          await fetch(`${API_BASE_URL}/api/notifications/mark-read`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userId, notificationIds: ids }),
-          });
-        }
+        if (cancelled || gen !== notificationFetchGen.current) return;
+        await fetchAndShowNotifications(userId, gen);
       } catch (e) {
         console.error("Failed to load notifications", e);
       }
     })();
 
+    const intervalId = window.setInterval(() => {
+      if (cancelled || gen !== notificationFetchGen.current) return;
+      void fetchAndShowNotifications(userId, gen).catch(() => {});
+    }, 10_000);
+
+    const onFocus = () => {
+      if (cancelled || gen !== notificationFetchGen.current) return;
+      void fetchAndShowNotifications(userId, gen).catch(() => {});
+    };
+    window.addEventListener("focus", onFocus);
+
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", onFocus);
     };
   }, [isLoggedIn, userId]);
 

@@ -16,17 +16,25 @@ const LoginView = ({ onLogin }: LoginViewProps) => {
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
 
   const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
   const isByuEmail = (value: string) =>
     /^[^\s@]+@byu\.edu$/i.test(value.trim());
 
+  const normalizePhoneForSubmit = (value: string) => value.trim();
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
       if (isSignUp) {
+        const phoneNorm = normalizePhoneForSubmit(phone);
+        if (!phoneNorm) {
+          toast.error("Phone number is required");
+          return;
+        }
         if (!isByuEmail(email)) {
           toast.error("Use a @byu.edu email", {
             description: "Only BYU email addresses can create an account.",
@@ -36,7 +44,7 @@ const LoginView = ({ onLogin }: LoginViewProps) => {
         const resp = await fetch(`${API_BASE_URL}/api/auth/register`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password, fullName: name }),
+          body: JSON.stringify({ email, password, fullName: name, phone: phoneNorm }),
         });
 
         const data = await resp.json().catch(() => ({}));
@@ -122,6 +130,20 @@ const LoginView = ({ onLogin }: LoginViewProps) => {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
+                />
+              </div>
+            )}
+            {isSignUp && (
+              <div className="space-y-2">
+                <Label htmlFor="phone" className="text-sm font-medium text-foreground">Phone Number</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="(555) 555-5555"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  required
+                  autoComplete="tel"
                 />
               </div>
             )}

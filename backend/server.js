@@ -232,10 +232,13 @@ app.post('/api/auth/login', async (req, res) => {
 // Auth: register (email + password + full name)
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { email, password, fullName } = req.body ?? {};
+    const { email, password, fullName, phone } = req.body ?? {};
 
     if (!email || typeof email !== 'string' || email.trim() === '') {
       return res.status(400).json({ error: 'Email is required' });
+    }
+    if (!phone || typeof phone !== 'string' || phone.trim() === '') {
+      return res.status(400).json({ error: 'Phone number is required' });
     }
     if (!password || typeof password !== 'string' || password === '') {
       return res.status(400).json({ error: 'Password is required' });
@@ -293,13 +296,20 @@ app.post('/api/auth/register', async (req, res) => {
       }
     }
 
-    const phone = '';
+    const phoneNorm = phone.trim();
+    if (phoneNorm.length > 20) {
+      return res.status(400).json({ error: 'Phone number is too long' });
+    }
+    // Allow common characters, but keep original formatting for display.
+    if (!/^[0-9+\-().\s]+$/.test(phoneNorm)) {
+      return res.status(400).json({ error: 'Phone number contains invalid characters' });
+    }
 
     const result = await pool.query(
       `INSERT INTO users (first_name, last_name, username, email, phone, password_hash)
        VALUES ($1, $2, $3, $4, $5, crypt($6, gen_salt('bf')))
        RETURNING user_id, first_name, last_name, username, email, phone, profile_photo_path, car_id, user_level`,
-      [first_name, last_name, username, emailNorm, phone, password]
+      [first_name, last_name, username, emailNorm, phoneNorm, password]
     );
 
     res.json({ user: result.rows[0] });
@@ -1106,6 +1116,38 @@ app.post('/api/rides/:offerId/book', async (req, res) => {
        WHERE offer_id = $1`,
       [parsedOfferId]
     );
+
+    // Notify the driver that someone booked.
+    try {
+      const meta = await client.query(
+        `SELECT
+           lf.name AS from_location_name,
+           lt.name AS to_location_name,
+           u.first_name AS rider_first_name,
+           u.last_name AS rider_last_name,
+           u.username AS rider_username
+         FROM ride_offer ro
+         JOIN location lf ON lf.location_id = ro.from_location_id
+         JOIN location lt ON lt.location_id = ro.to_location_id
+         JOIN users u ON u.user_id = $2
+         WHERE ro.offer_id = $1
+         LIMIT 1`,
+        [parsedOfferId, parsedUserId]
+      );
+      const row = meta.rows?.[0] ?? {};
+      const riderName = `${row.rider_first_name ?? ''} ${row.rider_last_name ?? ''}`.trim() || row.rider_username || 'A rider';
+      const fromName = row.from_location_name || 'Start';
+      const toName = row.to_location_name || 'Destination';
+      const depLabel = new Date(offer.departure_time).toLocaleString();
+      const msg = `${riderName} booked your ride (${fromName} → ${toName}, ${depLabel}).`;
+      await client.query(
+        `INSERT INTO user_notification (user_id, message) VALUES ($1, $2)`,
+        [Number(offer.user_id), msg]
+      );
+    } catch (e) {
+      // Notifications should never block booking.
+      console.error('Failed to create booking notification:', e);
+    }
 
     await client.query('COMMIT');
     res.status(201).json(tripResult.rows[0]);
