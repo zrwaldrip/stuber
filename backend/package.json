@@ -1,8 +1,8 @@
 {
-  "name": "stuber-backend",
+  "name": "blue-ride-backend",
   "version": "1.0.0",
   "type": "module",
-  "description": "Backend server for STÜBER ride-sharing app",
+  "description": "Backend server for Blue Ride ride-sharing app",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

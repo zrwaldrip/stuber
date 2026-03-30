@@ -1,4 +1,4 @@
-import { User, MapPin, PlusCircle } from "lucide-react";
+import { User, MapPin, PlusCircle, BookMarked } from "lucide-react";
 import type { View } from "./AppHeader";
 
 interface BottomNavProps {
@@ -9,6 +9,7 @@ interface BottomNavProps {
 const BottomNav = ({ currentView, onNavigate }: BottomNavProps) => {
   const items = [
     { view: "rides" as View, icon: MapPin, label: "Rides" },
+    { view: "my-rides" as View, icon: BookMarked, label: "My Rides" },
     { view: "post" as View, icon: PlusCircle, label: "Post" },
     { view: "profile" as View, icon: User, label: "Profile" },
   ];
@@ -24,7 +25,7 @@ const BottomNav = ({ currentView, onNavigate }: BottomNavProps) => {
               onClick={() => onNavigate(item.view)}
               className={`flex flex-col items-center gap-0.5 rounded-lg px-4 py-1.5 transition-colors ${
                 active
-                  ? "text-primary"
+                  ? "text-foreground dark:bg-accent/15 dark:text-accent"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >

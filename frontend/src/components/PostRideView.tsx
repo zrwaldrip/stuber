@@ -1,119 +1,139 @@
-import { useState, useMemo } from "react";
-import { MapPin, Clock, Loader2, Minus, Plus, CalendarIcon, Sparkles, RepeatIcon } from "lucide-react";
-import MapPicker from "./MapPicker";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Clock, Loader2, Minus, Plus, CalendarIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { useAppState, LOCATIONS, DAY_NAMES } from "@/store/AppContext";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Switch } from "@/components/ui/switch";
+import { useAppState } from "@/store/AppContext";
 
 interface PostRideViewProps {
+  userId: number;
   onComplete: () => void;
 }
 
-const POPULAR_LOCATIONS = [
-  "Tanner Building",
-  "Campus Plaza",
-  "Marriott Center",
-  "Wilkinson Center",
-  "Heritage Halls",
-  "The Village",
-];
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
-const WEEKDAYS = [
-  { label: "Sun", value: 0 },
-  { label: "Mon", value: 1 },
-  { label: "Tue", value: 2 },
-  { label: "Wed", value: 3 },
-  { label: "Thu", value: 4 },
-  { label: "Fri", value: 5 },
-  { label: "Sat", value: 6 },
-];
 
-const PostRideView = ({ onComplete }: PostRideViewProps) => {
-  const { addRide, addRecurringRide } = useAppState();
-  const [departure, setDeparture] = useState("");
-  const [destination, setDestination] = useState("");
+const PostRideView = ({ userId, onComplete }: PostRideViewProps) => {
+  const { refreshLiveRideCount } = useAppState();
+  type LocationRow = { location_id: number; name: string; location_type?: string | null };
+  const [locations, setLocations] = useState<LocationRow[]>([]);
+  const [loadingLocations, setLoadingLocations] = useState(false);
+
+  const [fromLocationId, setFromLocationId] = useState<number | null>(null);
+  const [toLocationId, setToLocationId] = useState<number | null>(null);
+  const [fromLocationText, setFromLocationText] = useState("");
+  const [toLocationText, setToLocationText] = useState("");
+  const [fromPlaceholderExample, setFromPlaceholderExample] = useState<string>("");
+  const [toPlaceholderExample, setToPlaceholderExample] = useState<string>("");
+  const fromTouchedRef = useRef(false);
+  const toTouchedRef = useRef(false);
+
   const [date, setDate] = useState<Date | undefined>(new Date());
-  const [showMap, setShowMap] = useState(false);
   const [time, setTime] = useState(() => {
     const now = new Date();
     return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   });
   const [seats, setSeats] = useState(3);
   const [loading, setLoading] = useState(false);
-  const [depFocused, setDepFocused] = useState(false);
-  const [destFocused, setDestFocused] = useState(false);
-  const [isRecurring, setIsRecurring] = useState(false);
-  const [selectedDays, setSelectedDays] = useState<number[]>([]);
+  const fromLocName = useMemo(() => {
+    if (!fromLocationId) return fromPlaceholderExample;
+    return locations.find((l) => l.location_id === fromLocationId)?.name ?? fromPlaceholderExample;
+  }, [locations, fromLocationId, fromPlaceholderExample]);
+  const toLocName = useMemo(() => {
+    if (!toLocationId) return toPlaceholderExample;
+    return locations.find((l) => l.location_id === toLocationId)?.name ?? toPlaceholderExample;
+  }, [locations, toLocationId, toPlaceholderExample]);
 
-  const depSuggestions = useMemo(() => {
-    if (!depFocused || departure.length === 0) return POPULAR_LOCATIONS.slice(0, 4);
-    const q = departure.toLowerCase();
-    return LOCATIONS.filter((l) => l.name.toLowerCase().includes(q)).map((l) => l.name).slice(0, 4);
-  }, [departure, depFocused]);
+  useEffect(() => {
+    const fetchLocations = async () => {
+      setLoadingLocations(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/locations`);
+        if (!response.ok) throw new Error("Failed to load locations");
+        const data = await response.json();
+        setLocations(Array.isArray(data) ? data : []);
 
-  const destSuggestions = useMemo(() => {
-    if (!destFocused || destination.length === 0) return POPULAR_LOCATIONS.filter((l) => l !== departure).slice(0, 4);
-    const q = destination.toLowerCase();
-    return LOCATIONS.filter((l) => l.name.toLowerCase().includes(q)).map((l) => l.name).slice(0, 4);
-  }, [destination, destFocused, departure]);
-
-  const toggleDay = (day: number) => {
-    setSelectedDays((prev) =>
-      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
-    );
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isRecurring && selectedDays.length === 0) {
-      toast.error("Select at least one day", { description: "Choose which days this ride repeats." });
-      return;
-    }
-
-    setLoading(true);
-    const fromLoc = LOCATIONS.find((l) => l.name.toLowerCase() === departure.toLowerCase());
-    const toLoc = LOCATIONS.find((l) => l.name.toLowerCase() === destination.toLowerCase());
-    const formattedTime = format(new Date(`2026-01-01T${time}`), "h:mm a");
-
-    setTimeout(() => {
-      if (isRecurring) {
-        selectedDays.sort().forEach((day) => {
-          addRecurringRide({
-            driverId: "d-3",
-            fromLocationId: fromLoc?.id ?? "loc-5",
-            toLocationId: toLoc?.id ?? "loc-6",
-            departureTime: formattedTime,
-            dayOfWeek: day,
-            totalSeats: seats,
-            availableSeats: seats,
-          });
-        });
-        const dayLabels = selectedDays.sort().map((d) => DAY_NAMES[d]).join(", ");
-        toast.success("Recurring ride posted!", {
-          description: `${departure} → ${destination} every ${dayLabels} at ${formattedTime}`,
-        });
-      } else {
-        addRide({
-          driverId: "d-3",
-          fromLocationId: fromLoc?.id ?? "loc-5",
-          toLocationId: toLoc?.id ?? "loc-6",
-          departureTime: formattedTime,
-          date: date ? format(date, "yyyy-MM-dd") : "2026-02-10",
-          totalSeats: seats,
-          availableSeats: seats,
-        });
-        toast.success("Ride posted successfully!", { description: `${departure} → ${destination}` });
+        // Leave inputs empty; only provide examples via placeholder.
+        if (Array.isArray(data) && data.length > 0) {
+          setFromPlaceholderExample(data[0]?.name ?? "");
+          setToPlaceholderExample(data[1]?.name ?? "");
+        } else {
+          setFromPlaceholderExample("");
+          setToPlaceholderExample("");
+        }
+        // Don't overwrite the user's current typing/selection if they already interacted.
+        if (!fromTouchedRef.current) {
+          setFromLocationId(null);
+          setFromLocationText("");
+        }
+        if (!toTouchedRef.current) {
+          setToLocationId(null);
+          setToLocationText("");
+        }
+      } catch (error) {
+        console.error("Error loading locations:", error);
+        toast.error("Failed to load locations");
+      } finally {
+        setLoadingLocations(false);
       }
-      setLoading(false);
+    };
+
+    fetchLocations();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      if (!fromLocationId || !toLocationId) {
+        toast.error("Select both departure and destination");
+        return;
+      }
+      if (fromLocationId === toLocationId) {
+        toast.error("Departure and destination must be different");
+        return;
+      }
+
+      const rideDate = date ?? new Date();
+      const [h, m] = time.split(":").map((n) => parseInt(n, 10));
+      const departureDateTime = new Date(rideDate);
+      departureDateTime.setHours(Number.isNaN(h) ? 0 : h, Number.isNaN(m) ? 0 : m, 0, 0);
+
+      const response = await fetch(`${API_BASE_URL}/api/rides`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId,
+          fromLocationId,
+          toLocationId,
+          departureTime: departureDateTime.toISOString(),
+          availableSeats: seats,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: "Failed to post ride" }));
+        throw new Error(error.error || "Failed to post ride");
+      }
+
+      await refreshLiveRideCount();
+      toast.success("Ride posted successfully!", { description: `${fromLocName} → ${toLocName}` });
       onComplete();
-    }, 1500);
+    } catch (error) {
+      console.error("Error posting ride:", error);
+      toast.error("Failed to post ride", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -125,142 +145,86 @@ const PostRideView = ({ onComplete }: PostRideViewProps) => {
         {/* Departure */}
         <div className="space-y-2">
           <Label className="text-sm font-medium text-foreground">Departure Location</Label>
+          <datalist id="from_locations_datalist">
+            {locations.map((l) => (
+              <option key={l.location_id} value={l.name} />
+            ))}
+          </datalist>
           <Input
-            placeholder="Where are you leaving from?"
-            value={departure}
-            onChange={(e) => setDeparture(e.target.value)}
-            onFocus={() => setDepFocused(true)}
-            onBlur={() => setTimeout(() => setDepFocused(false), 200)}
-            required
+            value={fromLocationText}
+            onChange={(e) => {
+              const next = e.target.value;
+                fromTouchedRef.current = true;
+              setFromLocationText(next);
+              const trimmed = next.trim().toLowerCase();
+              const exact = locations.find((l) => l.name.toLowerCase() === trimmed);
+              setFromLocationId(exact?.location_id ?? null);
+            }}
+            onBlur={() => {
+              const trimmed = fromLocationText.trim().toLowerCase();
+              const exact = locations.find((l) => l.name.toLowerCase() === trimmed);
+              setFromLocationId(exact?.location_id ?? null);
+            }}
+            placeholder={loadingLocations ? "Loading..." : (fromPlaceholderExample ? `e.g. ${fromPlaceholderExample}` : "Type a departure location")}
+            disabled={loading || loadingLocations}
+            list="from_locations_datalist"
           />
-          {depFocused && (
-            <div className="flex flex-wrap gap-1.5 animate-fade-in">
-              <Sparkles className="h-3.5 w-3.5 text-muted-foreground mt-0.5" />
-              {depSuggestions.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onMouseDown={(e) => { e.preventDefault(); setDeparture(s); setDepFocused(false); }}
-                  className="rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* Destination */}
         <div className="space-y-2">
           <Label className="text-sm font-medium text-foreground">Destination</Label>
+          <datalist id="to_locations_datalist">
+            {locations.map((l) => (
+              <option key={l.location_id} value={l.name} />
+            ))}
+          </datalist>
           <Input
-            placeholder="Where are you heading?"
-            value={destination}
-            onChange={(e) => setDestination(e.target.value)}
-            onFocus={() => setDestFocused(true)}
-            onBlur={() => setTimeout(() => setDestFocused(false), 200)}
-            required
+            value={toLocationText}
+            onChange={(e) => {
+              const next = e.target.value;
+                toTouchedRef.current = true;
+              setToLocationText(next);
+              const trimmed = next.trim().toLowerCase();
+              const exact = locations.find((l) => l.name.toLowerCase() === trimmed);
+              setToLocationId(exact?.location_id ?? null);
+            }}
+            onBlur={() => {
+              const trimmed = toLocationText.trim().toLowerCase();
+              const exact = locations.find((l) => l.name.toLowerCase() === trimmed);
+              setToLocationId(exact?.location_id ?? null);
+            }}
+            placeholder={loadingLocations ? "Loading..." : (toPlaceholderExample ? `e.g. ${toPlaceholderExample}` : "Type a destination location")}
+            disabled={loading || loadingLocations}
+            list="to_locations_datalist"
           />
-          {destFocused && (
-            <div className="flex flex-wrap gap-1.5 animate-fade-in">
-              <Sparkles className="h-3.5 w-3.5 text-muted-foreground mt-0.5" />
-              {destSuggestions.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onMouseDown={(e) => { e.preventDefault(); setDestination(s); setDestFocused(false); }}
-                  className="rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="mt-2">
-            <button
-              type="button"
-              className="text-sm text-primary underline"
-              onClick={() => setShowMap((s) => !s)}
-            >
-              {showMap ? "Hide map" : "Pick on map"}
-            </button>
-          </div>
-          {showMap && (
-            <div className="pt-3">
-              <MapPicker
-                onChange={(dep, dest) => {
-                  if (dep) setDeparture(dep);
-                  if (dest) setDestination(dest);
-                }}
+        </div>
+
+        {/* Date picker */}
+        <div className="space-y-2">
+          <Label className="text-sm font-medium text-foreground">Date</Label>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn("w-full justify-start text-left font-normal", !date && "text-muted-foreground")}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {date ? format(date, "MMM d, yyyy") : "Pick a date"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={date}
+                onSelect={setDate}
+                initialFocus
+                className={cn("p-3 pointer-events-auto")}
+                disabled={(d) => d < new Date(new Date().setHours(0, 0, 0, 0))}
               />
-            </div>
-          )}
+            </PopoverContent>
+          </Popover>
         </div>
-
-        {/* Recurring toggle */}
-        <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3">
-          <div className="flex items-center gap-2.5">
-            <RepeatIcon className="h-4 w-4 text-primary" />
-            <div>
-              <p className="text-sm font-medium text-foreground">Recurring Ride</p>
-              <p className="text-xs text-muted-foreground">Repeats weekly — riders can subscribe</p>
-            </div>
-          </div>
-          <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
-        </div>
-
-        {/* Day picker (recurring only) */}
-        {isRecurring ? (
-          <div className="space-y-2 animate-fade-in">
-            <Label className="text-sm font-medium text-foreground">Repeats on</Label>
-            <div className="flex gap-1.5">
-              {WEEKDAYS.map((day) => {
-                const active = selectedDays.includes(day.value);
-                return (
-                  <button
-                    key={day.value}
-                    type="button"
-                    onClick={() => toggleDay(day.value)}
-                    className={cn(
-                      "flex-1 rounded-lg border py-2 text-xs font-medium transition-colors",
-                      active
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
-                    )}
-                  >
-                    {day.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
-          /* Date picker (one-time only) */
-          <div className="space-y-2">
-            <Label className="text-sm font-medium text-foreground">Date</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn("w-full justify-start text-left font-normal", !date && "text-muted-foreground")}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {date ? format(date, "MMM d, yyyy") : "Pick a date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={date}
-                  onSelect={setDate}
-                  initialFocus
-                  className={cn("p-3 pointer-events-auto")}
-                  disabled={(d) => d < new Date(new Date().setHours(0, 0, 0, 0))}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-        )}
 
         {/* Time */}
         <div className="space-y-2">
@@ -315,7 +279,7 @@ const PostRideView = ({ onComplete }: PostRideViewProps) => {
           </Button>
           <Button type="submit" className="flex-[2]" disabled={loading}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            {loading ? "Posting…" : isRecurring ? "Post Recurring Ride" : "Post Ride"}
+            {loading ? "Posting…" : "Post Ride"}
           </Button>
         </div>
       </form>

@@ -5,7 +5,7 @@ const Logo = ({ className = "" }: { className?: string }) => (
     <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
       <Car className="h-5 w-5 text-secondary-foreground" />
     </div>
-    <span className="text-xl font-semibold tracking-tight text-foreground">STÜBER</span>
+    <span className="text-xl font-semibold tracking-tight text-foreground">Blue Ride</span>
   </div>
 );
 

@@ -212,7 +212,7 @@ const MapPicker: React.FC<{ onChange?: OnChangeFn }> = ({ onChange }) => {
       {loading ? (
         <div className="rounded-md border border-border p-6 text-center text-sm text-muted-foreground">Loading map…</div>
       ) : error ? (
-        <div className="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-700">Error loading map: {error}</div>
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">Error loading map: {error}</div>
       ) : (
         <div className="h-64 w-full rounded-md border border-border">
           <div ref={containerRef} style={{ width: "100%", height: "100%" }} />

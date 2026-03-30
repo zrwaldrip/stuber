@@ -64,6 +64,87 @@ pool.on('error', (err) => {
   process.exit(-1);
 });
 
+const ensureImagePathColumns = async () => {
+  try {
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'users'
+            AND column_name = 'profile_photo_url'
+        ) AND NOT EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'users'
+            AND column_name = 'profile_photo_path'
+        ) THEN
+          ALTER TABLE public.users RENAME COLUMN profile_photo_url TO profile_photo_path;
+        END IF;
+      END
+      $$;
+    `);
+
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'car'
+            AND column_name = 'car_photo_url'
+        ) AND NOT EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'car'
+            AND column_name = 'car_photo_path'
+        ) THEN
+          ALTER TABLE public.car RENAME COLUMN car_photo_url TO car_photo_path;
+        END IF;
+      END
+      $$;
+    `);
+  } catch (error) {
+    console.error('Error ensuring image path columns:', error);
+  }
+};
+
+void ensureImagePathColumns();
+
+const ensureUserLevelColumn = async () => {
+  try {
+    await pool.query(`
+      ALTER TABLE public.users
+        ADD COLUMN IF NOT EXISTS user_level text NOT NULL DEFAULT 'user';
+    `);
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'users_user_level_check'
+        ) THEN
+          ALTER TABLE public.users
+            ADD CONSTRAINT users_user_level_check CHECK (user_level IN ('user', 'admin'));
+        END IF;
+      END
+      $$;
+    `);
+  } catch (error) {
+    console.error('Error ensuring user_level column:', error);
+  }
+};
+
+const getActingUserId = (req) => {
+  const raw = req.headers['x-acting-user-id'];
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
+};
+
 // Routes
 
 // Auth: login (email or username + password)
@@ -81,7 +162,7 @@ app.post('/api/auth/login', async (req, res) => {
     const ident = identifier.trim().toLowerCase();
 
     const result = await pool.query(
-      `SELECT user_id, first_name, last_name, username, email, phone, profile_photo_path, car_id
+      `SELECT user_id, first_name, last_name, username, email, phone, profile_photo_path, car_id, user_level
        FROM users
        WHERE (LOWER(email) = $1 OR LOWER(username) = $1)
          AND password_hash = crypt($2, password_hash)
@@ -145,6 +226,10 @@ app.post('/api/auth/register', async (req, res) => {
 
     const emailNorm = email.trim().toLowerCase();
 
+    if (!/^[^\s@]+@byu\.edu$/.test(emailNorm)) {
+      return res.status(400).json({ error: 'Sign up requires a @byu.edu email address.' });
+    }
+
     const dupEmail = await pool.query(
       `SELECT 1 FROM users WHERE LOWER(email) = $1 LIMIT 1`,
       [emailNorm]
@@ -190,7 +275,7 @@ app.post('/api/auth/register', async (req, res) => {
     const result = await pool.query(
       `INSERT INTO users (first_name, last_name, username, email, phone, password_hash)
        VALUES ($1, $2, $3, $4, $5, crypt($6, gen_salt('bf')))
-       RETURNING user_id, first_name, last_name, username, email, phone, profile_photo_path, car_id`,
+       RETURNING user_id, first_name, last_name, username, email, phone, profile_photo_path, car_id, user_level`,
       [first_name, last_name, username, emailNorm, phone, password]
     );
 
@@ -226,10 +311,26 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
-// Get all users
+// Get all users (admin only)
 app.get('/api/users', async (req, res) => {
   try {
-    const result = await pool.query('SELECT user_id, first_name, last_name, username, email, profile_photo_path FROM users ORDER BY user_id');
+    const actingUserId = getActingUserId(req);
+    if (actingUserId == null) {
+      return res.status(401).json({ error: 'X-Acting-User-Id header is required' });
+    }
+    const adminCheck = await pool.query(
+      'SELECT 1 FROM users WHERE user_id = $1 AND user_level = $2 LIMIT 1',
+      [actingUserId, 'admin']
+    );
+    if (adminCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const result = await pool.query(
+      `SELECT user_id, first_name, last_name, username, email, phone, user_level, profile_photo_path, car_id
+       FROM users
+       ORDER BY user_id`
+    );
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching users:', error);
@@ -260,7 +361,7 @@ app.get('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
-      'SELECT user_id, first_name, last_name, username, email, phone, profile_photo_path, car_id FROM users WHERE user_id = $1',
+      'SELECT user_id, first_name, last_name, username, email, phone, profile_photo_path, car_id, user_level FROM users WHERE user_id = $1',
       [id]
     );
     
@@ -288,11 +389,122 @@ app.get('/api/users/:id', async (req, res) => {
   }
 });
 
-// Update user details (first name, last name, username, phone)
+// Get user profile stats
+app.get('/api/users/:id/stats', async (req, res) => {
+  try {
+    const parsedUserId = Number(req.params.id);
+    if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
+      return res.status(400).json({ error: 'Valid user id is required' });
+    }
+
+    const userResult = await pool.query(
+      'SELECT user_id FROM users WHERE user_id = $1',
+      [parsedUserId]
+    );
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const statsResult = await pool.query(
+      `SELECT COUNT(*)::int AS total_rides
+       FROM ride_offer
+       WHERE user_id = $1`,
+      [parsedUserId]
+    );
+
+    res.json({ total_rides: statsResult.rows[0]?.total_rides ?? 0 });
+  } catch (error) {
+    console.error('Error fetching user stats:', error);
+    if (error.code === '3D000') {
+      return res.status(500).json({
+        error: 'Database does not exist. Please run the database setup scripts first.',
+      });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({
+        error: 'Database authentication failed. Please check your .env file credentials.',
+      });
+    }
+    if (error.code === '42P01') {
+      return res.status(500).json({
+        error: 'Ride tables do not exist. Please run schema.sql.',
+      });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update user details (self: name/username/phone; admin: may also set email, userLevel)
 app.put('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { firstName, lastName, username, phone } = req.body;
+    const targetUserId = Number(id);
+    if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+      return res.status(400).json({ error: 'Valid user id is required' });
+    }
+
+    const actingUserId = getActingUserId(req);
+    if (actingUserId == null) {
+      return res.status(401).json({ error: 'X-Acting-User-Id header is required' });
+    }
+
+    const actingResult = await pool.query(
+      'SELECT user_id, user_level FROM users WHERE user_id = $1',
+      [actingUserId]
+    );
+    if (actingResult.rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid acting user' });
+    }
+    const actingIsAdmin = actingResult.rows[0].user_level === 'admin';
+    const isSelf = actingUserId === targetUserId;
+
+    if (!isSelf && !actingIsAdmin) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const { firstName, lastName, username, phone, email, userLevel } = req.body ?? {};
+
+    if (!actingIsAdmin && (email !== undefined || userLevel !== undefined)) {
+      return res.status(403).json({ error: 'Only admins can change email or user level' });
+    }
+
+    if (actingIsAdmin && typeof email === 'string' && email.trim() !== '') {
+      const emailNorm = email.trim().toLowerCase();
+      const dup = await pool.query(
+        `SELECT 1 FROM users WHERE LOWER(email) = $1 AND user_id <> $2 LIMIT 1`,
+        [emailNorm, targetUserId]
+      );
+      if (dup.rows.length > 0) {
+        return res.status(409).json({ error: 'Email already in use' });
+      }
+    }
+
+    let nextLevel = null;
+    if (actingIsAdmin && userLevel !== undefined && userLevel !== null) {
+      const lv = typeof userLevel === 'string' ? userLevel.trim().toLowerCase() : '';
+      if (lv !== 'user' && lv !== 'admin') {
+        return res.status(400).json({ error: 'userLevel must be user or admin' });
+      }
+      nextLevel = lv;
+
+      const currentRow = await pool.query('SELECT user_level FROM users WHERE user_id = $1', [targetUserId]);
+      if (currentRow.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      const wasAdmin = currentRow.rows[0].user_level === 'admin';
+      if (wasAdmin && nextLevel === 'user') {
+        const cnt = await pool.query(
+          `SELECT COUNT(*)::int AS c FROM users WHERE user_level = 'admin'`
+        );
+        if (cnt.rows[0].c <= 1) {
+          return res.status(409).json({ error: 'Cannot remove the last admin' });
+        }
+      }
+    }
+
+    const updateEmail = actingIsAdmin && typeof email === 'string';
+    const emailNorm = updateEmail ? email.trim().toLowerCase() : null;
+    const updateLevel = nextLevel != null;
 
     const result = await pool.query(
       `UPDATE users
@@ -300,15 +512,21 @@ app.put('/api/users/:id', async (req, res) => {
          first_name = COALESCE($1, first_name),
          last_name  = COALESCE($2, last_name),
          username   = COALESCE($3, username),
-         phone      = COALESCE($4, phone)
-       WHERE user_id = $5
-       RETURNING user_id, first_name, last_name, username, email, phone, profile_photo_path, car_id`,
+         phone      = COALESCE($4, phone),
+         email      = CASE WHEN $5::boolean THEN COALESCE($6::text, email) ELSE email END,
+         user_level = CASE WHEN $7::boolean THEN $8::text ELSE user_level END
+       WHERE user_id = $9
+       RETURNING user_id, first_name, last_name, username, email, phone, profile_photo_path, car_id, user_level`,
       [
         firstName ?? null,
         lastName ?? null,
         username ?? null,
         phone ?? null,
-        id,
+        updateEmail,
+        emailNorm,
+        updateLevel,
+        nextLevel ?? null,
+        targetUserId,
       ]
     );
 
@@ -319,6 +537,152 @@ app.put('/api/users/:id', async (req, res) => {
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Error updating user:', error);
+
+    if (error.code === '23514') {
+      return res.status(400).json({ error: 'Invalid user level' });
+    }
+    if (error.code === '3D000') {
+      return res.status(500).json({
+        error: 'Database does not exist. Please run the database setup scripts first.',
+      });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({
+        error: 'Database authentication failed. Please check your .env file credentials.',
+      });
+    }
+
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete user (admin only; not self; not last admin)
+app.delete('/api/users/:id', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const targetUserId = Number(req.params.id);
+    if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+      return res.status(400).json({ error: 'Valid user id is required' });
+    }
+
+    const actingUserId = getActingUserId(req);
+    if (actingUserId == null) {
+      return res.status(401).json({ error: 'X-Acting-User-Id header is required' });
+    }
+
+    const adminCheck = await client.query(
+      'SELECT 1 FROM users WHERE user_id = $1 AND user_level = $2 LIMIT 1',
+      [actingUserId, 'admin']
+    );
+    if (adminCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    if (actingUserId === targetUserId) {
+      return res.status(400).json({ error: 'Cannot delete your own account' });
+    }
+
+    const targetResult = await client.query(
+      'SELECT user_id, user_level FROM users WHERE user_id = $1',
+      [targetUserId]
+    );
+    if (targetResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (targetResult.rows[0].user_level === 'admin') {
+      const cnt = await client.query(
+        `SELECT COUNT(*)::int AS c FROM users WHERE user_level = 'admin'`
+      );
+      if (cnt.rows[0].c <= 1) {
+        return res.status(409).json({ error: 'Cannot delete the last admin' });
+      }
+    }
+
+    await client.query('BEGIN');
+
+    await client.query(
+      `DELETE FROM trip
+       WHERE offer_id IN (SELECT offer_id FROM ride_offer WHERE user_id = $1)
+          OR request_id IN (SELECT request_id FROM ride_request WHERE user_id = $1)`,
+      [targetUserId]
+    );
+
+    await client.query('DELETE FROM users WHERE user_id = $1', [targetUserId]);
+
+    await client.query('COMMIT');
+    res.status(204).send();
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error deleting user:', error);
+    if (error.code === '23503') {
+      return res.status(409).json({
+        error: 'Cannot delete user: related records still reference this account. Remove or reassign them first.',
+      });
+    }
+    if (error.code === '3D000') {
+      return res.status(500).json({ error: 'Database does not exist. Please run the database setup scripts first.' });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({ error: 'Database authentication failed. Please check your .env file credentials.' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
+// Create a car for a user and link it (users.car_id must be null)
+app.post('/api/users/:id/car', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const parsedUserId = Number(id);
+    if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
+      return res.status(400).json({ error: 'Valid user id is required' });
+    }
+
+    const { make, model, year, color, licensePlate } = req.body ?? {};
+    const makeTrim = typeof make === 'string' ? make.trim() : '';
+    const modelTrim = typeof model === 'string' ? model.trim() : '';
+    if (!makeTrim || !modelTrim) {
+      return res.status(400).json({ error: 'Make and model are required' });
+    }
+
+    const userResult = await pool.query(
+      'SELECT user_id, car_id FROM users WHERE user_id = $1',
+      [parsedUserId]
+    );
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (userResult.rows[0].car_id != null) {
+      return res.status(400).json({ error: 'User already has a vehicle' });
+    }
+
+    let yearVal = null;
+    if (year != null && year !== '') {
+      const y = Number(year);
+      if (Number.isInteger(y) && y >= 1900 && y <= 2100) {
+        yearVal = y;
+      }
+    }
+
+    const plateTrim = typeof licensePlate === 'string' ? licensePlate.trim() : '';
+    const colorVal = typeof color === 'string' && color.trim() ? color.trim() : null;
+
+    const insert = await pool.query(
+      `INSERT INTO car (user_id, make, model, color, year, license_plate)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING car_id, user_id, make, model, color, year, license_plate, car_photo_path`,
+      [parsedUserId, makeTrim, modelTrim, colorVal, yearVal, plateTrim || '']
+    );
+
+    const carRow = insert.rows[0];
+    await pool.query('UPDATE users SET car_id = $1 WHERE user_id = $2', [carRow.car_id, parsedUserId]);
+
+    res.status(201).json(carRow);
+  } catch (error) {
+    console.error('Error creating car:', error);
 
     if (error.code === '3D000') {
       return res.status(500).json({
@@ -472,6 +836,481 @@ app.get('/api/cars/:id', async (req, res) => {
   }
 });
 
+// Get locations (used for ride posting dropdowns)
+app.get('/api/locations', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT location_id, name, location_type FROM location ORDER BY location_id ASC'
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching locations:', error);
+    if (error.code === '3D000') {
+      return res.status(500).json({ error: 'Database does not exist. Please run the database setup scripts first.' });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({ error: 'Database authentication failed. Please check your .env file credentials.' });
+    }
+    if (error.code === '42P01') {
+      return res.status(500).json({ error: 'Location table does not exist. Please run schema.sql.' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Create a one-time ride offer
+app.post('/api/rides', async (req, res) => {
+  try {
+    const { userId, fromLocationId, toLocationId, fromLocation, toLocation, departureTime, availableSeats, notes } =
+      req.body ?? {};
+
+    const parsedUserId = Number(userId);
+    const parsedSeats = Number(availableSeats);
+    let fromId = fromLocationId != null ? Number(fromLocationId) : null;
+    let toId = toLocationId != null ? Number(toLocationId) : null;
+    const fromName = typeof fromLocation === 'string' ? fromLocation.trim() : '';
+    const toName = typeof toLocation === 'string' ? toLocation.trim() : '';
+    const departRaw = typeof departureTime === 'string' ? departureTime.trim() : '';
+
+    if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
+      return res.status(400).json({ error: 'Valid userId is required' });
+    }
+    // IDs are preferred. Names are accepted only for legacy clients.
+    if ((!Number.isInteger(fromId) || fromId <= 0) && !fromName) {
+      return res.status(400).json({ error: 'From location is required' });
+    }
+    if ((!Number.isInteger(toId) || toId <= 0) && !toName) {
+      return res.status(400).json({ error: 'To location is required' });
+    }
+    if (!departRaw) {
+      return res.status(400).json({ error: 'Departure time is required' });
+    }
+    if (!Number.isInteger(parsedSeats) || parsedSeats <= 0) {
+      return res.status(400).json({ error: 'availableSeats must be a positive integer' });
+    }
+
+    const departureDate = new Date(departRaw);
+    if (Number.isNaN(departureDate.getTime())) {
+      return res.status(400).json({ error: 'departureTime must be a valid datetime string' });
+    }
+    const departureSql = departureDate.toISOString().slice(0, 19).replace('T', ' ');
+
+    const userResult = await pool.query('SELECT user_id FROM users WHERE user_id = $1', [parsedUserId]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const resolveExistingLocationId = async (idValue, nameValue) => {
+      if (Number.isInteger(idValue) && idValue > 0) return idValue;
+      if (!nameValue) return null;
+      const existing = await pool.query(
+        'SELECT location_id FROM location WHERE LOWER(name) = LOWER($1) LIMIT 1',
+        [nameValue]
+      );
+      if (existing.rows.length === 0) return null;
+      return existing.rows[0].location_id;
+    };
+
+    fromId = await resolveExistingLocationId(fromId, fromName);
+    toId = await resolveExistingLocationId(toId, toName);
+
+    if (!Number.isInteger(fromId) || fromId <= 0) {
+      return res.status(400).json({ error: 'From location must exist in the database' });
+    }
+    if (!Number.isInteger(toId) || toId <= 0) {
+      return res.status(400).json({ error: 'To location must exist in the database' });
+    }
+
+    const rideResult = await pool.query(
+      `INSERT INTO ride_offer
+        (user_id, from_location_id, to_location_id, departure_time, available_seats, notes, status)
+       VALUES ($1, $2, $3, $4::timestamp, $5, $6, 'active')
+       RETURNING offer_id, user_id, from_location_id, to_location_id, departure_time, available_seats, notes, status, created_at`,
+      [parsedUserId, fromId, toId, departureSql, parsedSeats, notes ?? null]
+    );
+
+    res.status(201).json(rideResult.rows[0]);
+  } catch (error) {
+    console.error('Error creating ride:', error);
+    if (error.code === '3D000') {
+      return res.status(500).json({ error: 'Database does not exist. Please run the database setup scripts first.' });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({ error: 'Database authentication failed. Please check your .env file credentials.' });
+    }
+    if (error.code === '42P01') {
+      return res.status(500).json({ error: 'Ride/location tables do not exist. Please run schema.sql.' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get active ride offers with related user/location/car data
+app.get('/api/rides', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT
+        ro.offer_id,
+        ro.departure_time,
+        ro.available_seats,
+        ro.status,
+        ro.notes,
+        ro.from_location_id,
+        ro.to_location_id,
+        lf.name AS from_location_name,
+        lt.name AS to_location_name,
+        u.user_id AS driver_user_id,
+        u.first_name AS driver_first_name,
+        u.last_name AS driver_last_name,
+        u.username AS driver_username,
+        u.profile_photo_path AS driver_profile_photo_path,
+        c.year AS car_year,
+        c.make AS car_make,
+        c.model AS car_model,
+        c.color AS car_color,
+        c.license_plate AS car_license_plate,
+        c.car_photo_path AS car_photo_path
+      FROM ride_offer ro
+      JOIN users u ON u.user_id = ro.user_id
+      JOIN location lf ON lf.location_id = ro.from_location_id
+      JOIN location lt ON lt.location_id = ro.to_location_id
+      LEFT JOIN car c ON c.user_id = u.user_id
+      WHERE ro.status = 'active'
+        AND ro.available_seats > 0
+        AND ro.departure_time >= NOW()
+      ORDER BY ro.departure_time ASC, ro.offer_id ASC`
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching rides:', error);
+    if (error.code === '3D000') {
+      return res.status(500).json({ error: 'Database does not exist. Please run the database setup scripts first.' });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({ error: 'Database authentication failed. Please check your .env file credentials.' });
+    }
+    if (error.code === '42P01') {
+      return res.status(500).json({ error: 'Ride tables do not exist. Please run schema.sql.' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Book a ride offer (one seat)
+app.post('/api/rides/:offerId/book', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const parsedOfferId = Number(req.params.offerId);
+    const parsedUserId = Number(req.body?.userId);
+
+    if (!Number.isInteger(parsedOfferId) || parsedOfferId <= 0) {
+      return res.status(400).json({ error: 'Valid offerId is required' });
+    }
+    if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
+      return res.status(400).json({ error: 'Valid userId is required' });
+    }
+
+    await client.query('BEGIN');
+
+    const offerResult = await client.query(
+      `SELECT offer_id, user_id, from_location_id, to_location_id, departure_time, available_seats, status
+       FROM ride_offer
+       WHERE offer_id = $1
+       FOR UPDATE`,
+      [parsedOfferId]
+    );
+    if (offerResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Ride offer not found' });
+    }
+
+    const offer = offerResult.rows[0];
+    if ((offer.status || '').toLowerCase() !== 'active') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Ride is not active' });
+    }
+    if (new Date(offer.departure_time).getTime() < Date.now()) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Ride has already departed' });
+    }
+    if (Number(offer.user_id) === parsedUserId) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'You cannot book your own ride' });
+    }
+    if (Number(offer.available_seats) <= 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Ride is full' });
+    }
+
+    const existingBooking = await client.query(
+      `SELECT t.trip_id
+       FROM trip t
+       JOIN ride_request rr ON rr.request_id = t.request_id
+       WHERE t.offer_id = $1
+         AND rr.user_id = $2
+         AND t.status IN ('pending', 'confirmed', 'active')
+       LIMIT 1`,
+      [parsedOfferId, parsedUserId]
+    );
+    if (existingBooking.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'You already booked this ride' });
+    }
+
+    const requestResult = await client.query(
+      `INSERT INTO ride_request
+        (user_id, from_location_id, to_location_id, earliest_departure, latest_departure, seats_needed, notes, status)
+       VALUES ($1, $2, $3, $4, $4, 1, $5, 'active')
+       RETURNING request_id`,
+      [parsedUserId, offer.from_location_id, offer.to_location_id, offer.departure_time, 'Booked from app']
+    );
+    const requestId = requestResult.rows[0].request_id;
+
+    const tripResult = await client.query(
+      `INSERT INTO trip
+        (offer_id, request_id, confirmed_time, seats_confirmed, status)
+       VALUES ($1, $2, NOW(), 1, 'confirmed')
+       RETURNING trip_id, offer_id, request_id, seats_confirmed, status`,
+      [parsedOfferId, requestId]
+    );
+
+    await client.query(
+      `UPDATE ride_offer
+       SET available_seats = available_seats - 1
+       WHERE offer_id = $1`,
+      [parsedOfferId]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json(tripResult.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error booking ride:', error);
+    if (error.code === '3D000') {
+      return res.status(500).json({ error: 'Database does not exist. Please run the database setup scripts first.' });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({ error: 'Database authentication failed. Please check your .env file credentials.' });
+    }
+    if (error.code === '42P01') {
+      return res.status(500).json({ error: 'Ride/trip tables do not exist. Please run schema.sql.' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
+// Cancel the current user's booking for a ride offer
+app.delete('/api/rides/:offerId/book', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const parsedOfferId = Number(req.params.offerId);
+    const parsedUserId = Number(req.query.userId);
+
+    if (!Number.isInteger(parsedOfferId) || parsedOfferId <= 0) {
+      return res.status(400).json({ error: 'Valid offerId is required' });
+    }
+    if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
+      return res.status(400).json({ error: 'Valid userId is required' });
+    }
+
+    await client.query('BEGIN');
+
+    const offerResult = await client.query(
+      `SELECT offer_id, departure_time
+       FROM ride_offer
+       WHERE offer_id = $1
+       FOR UPDATE`,
+      [parsedOfferId]
+    );
+    if (offerResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Ride offer not found' });
+    }
+    if (new Date(offerResult.rows[0].departure_time).getTime() < Date.now()) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Ride has already departed' });
+    }
+
+    const bookingResult = await client.query(
+      `SELECT t.trip_id, t.request_id, t.seats_confirmed
+       FROM trip t
+       JOIN ride_request rr ON rr.request_id = t.request_id
+       WHERE t.offer_id = $1
+         AND rr.user_id = $2
+         AND t.status IN ('pending', 'confirmed', 'active')
+       ORDER BY t.created_at DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [parsedOfferId, parsedUserId]
+    );
+    if (bookingResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'No active booking found for this ride' });
+    }
+
+    const booking = bookingResult.rows[0];
+    const seatCount = Math.max(1, Number(booking.seats_confirmed || 1));
+
+    await client.query(
+      `UPDATE trip
+       SET status = 'cancelled'
+       WHERE trip_id = $1`,
+      [booking.trip_id]
+    );
+    await client.query(
+      `UPDATE ride_request
+       SET status = 'cancelled'
+       WHERE request_id = $1`,
+      [booking.request_id]
+    );
+    await client.query(
+      `UPDATE ride_offer
+       SET available_seats = available_seats + $2
+       WHERE offer_id = $1`,
+      [parsedOfferId, seatCount]
+    );
+
+    await client.query('COMMIT');
+    res.json({ success: true, trip_id: booking.trip_id });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error cancelling booking:', error);
+    if (error.code === '3D000') {
+      return res.status(500).json({ error: 'Database does not exist. Please run the database setup scripts first.' });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({ error: 'Database authentication failed. Please check your .env file credentials.' });
+    }
+    if (error.code === '42P01') {
+      return res.status(500).json({ error: 'Ride/trip tables do not exist. Please run schema.sql.' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
+// Get rides for a specific user (booked + offered)
+app.get('/api/my-rides', async (req, res) => {
+  try {
+    const parsedUserId = Number(req.query.userId);
+    if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
+      return res.status(400).json({ error: 'Valid userId query param is required' });
+    }
+
+    const userResult = await pool.query('SELECT user_id FROM users WHERE user_id = $1', [parsedUserId]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const [bookedResult, offeredResult] = await Promise.all([
+      pool.query(
+        `SELECT
+          t.trip_id,
+          t.status AS booking_status,
+          t.seats_confirmed,
+          t.created_at AS booked_at,
+          ro.offer_id,
+          ro.departure_time,
+          ro.available_seats,
+          ro.status AS offer_status,
+          lf.name AS from_location_name,
+          lt.name AS to_location_name,
+          u.user_id AS driver_user_id,
+          u.first_name AS driver_first_name,
+          u.last_name AS driver_last_name,
+          u.username AS driver_username,
+          u.profile_photo_path AS driver_profile_photo_path,
+          c.year AS car_year,
+          c.make AS car_make,
+          c.model AS car_model,
+          c.color AS car_color,
+          c.license_plate AS car_license_plate,
+          c.car_photo_path AS car_photo_path
+        FROM trip t
+        JOIN ride_request rr ON rr.request_id = t.request_id
+        JOIN ride_offer ro ON ro.offer_id = t.offer_id
+        JOIN users u ON u.user_id = ro.user_id
+        JOIN location lf ON lf.location_id = ro.from_location_id
+        JOIN location lt ON lt.location_id = ro.to_location_id
+        LEFT JOIN car c ON c.user_id = u.user_id
+        WHERE rr.user_id = $1
+          AND t.status IN ('pending', 'confirmed', 'active')
+          AND ro.departure_time >= NOW()
+        ORDER BY ro.departure_time ASC, t.trip_id ASC`,
+        [parsedUserId]
+      ),
+      pool.query(
+        `SELECT
+          ro.offer_id,
+          ro.departure_time,
+          ro.available_seats,
+          ro.status,
+          ro.notes,
+          lf.name AS from_location_name,
+          lt.name AS to_location_name,
+          COALESCE(
+            SUM(CASE WHEN t.status IN ('pending', 'confirmed', 'active') THEN t.seats_confirmed ELSE 0 END),
+            0
+          )::int AS seats_booked,
+          COUNT(DISTINCT CASE WHEN t.status IN ('pending', 'confirmed', 'active') THEN t.trip_id END)::int AS rider_count,
+          COALESCE(
+            json_agg(
+              DISTINCT jsonb_build_object(
+                'user_id', rider.user_id,
+                'first_name', rider.first_name,
+                'last_name', rider.last_name,
+                'username', rider.username,
+                'email', rider.email,
+                'phone', rider.phone,
+                'profile_photo_path', rider.profile_photo_path,
+                'car_year', rc.year,
+                'car_make', rc.make,
+                'car_model', rc.model,
+                'car_color', rc.color,
+                'car_license_plate', rc.license_plate,
+                'car_photo_path', rc.car_photo_path
+              )
+            ) FILTER (WHERE t.status IN ('pending', 'confirmed', 'active') AND rider.user_id IS NOT NULL),
+            '[]'::json
+          ) AS riders
+        FROM ride_offer ro
+        JOIN location lf ON lf.location_id = ro.from_location_id
+        JOIN location lt ON lt.location_id = ro.to_location_id
+        LEFT JOIN trip t ON t.offer_id = ro.offer_id
+        LEFT JOIN ride_request rr ON rr.request_id = t.request_id
+        LEFT JOIN users rider ON rider.user_id = rr.user_id
+        LEFT JOIN car rc ON rc.user_id = rider.user_id
+        WHERE ro.user_id = $1
+          AND ro.departure_time >= NOW()
+        GROUP BY ro.offer_id, ro.departure_time, ro.available_seats, ro.status, ro.notes, lf.name, lt.name
+        ORDER BY ro.departure_time ASC, ro.offer_id ASC`,
+        [parsedUserId]
+      ),
+    ]);
+
+    res.json({
+      bookedRides: bookedResult.rows,
+      offeredRides: offeredResult.rows,
+    });
+  } catch (error) {
+    console.error('Error fetching my rides:', error);
+    if (error.code === '3D000') {
+      return res.status(500).json({ error: 'Database does not exist. Please run the database setup scripts first.' });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({ error: 'Database authentication failed. Please check your .env file credentials.' });
+    }
+    if (error.code === '42P01') {
+      return res.status(500).json({ error: 'Ride/trip tables do not exist. Please run schema.sql.' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Update car details (make, model, year, color, license plate)
 app.put('/api/cars/:id', async (req, res) => {
   try {
@@ -584,7 +1423,10 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+// Start server after user_level migration
+(async () => {
+  await ensureUserLevelColumn();
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+})();

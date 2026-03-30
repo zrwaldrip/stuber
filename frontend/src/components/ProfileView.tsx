@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { BadgeCheck, Car, Star, Shield, Award, Route, Mail, Phone } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { BadgeCheck, Car, Shield, Route, Mail, Phone, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,6 +16,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import type { View } from "@/components/AppHeader";
+import { mailtoHref, smsHref, telHref } from "@/lib/contactLinks";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
@@ -33,56 +35,47 @@ function initialsFromName(first: string, last: string) {
   return s || "?";
 }
 
-const parseCarMakeModel = (input: string) => {
-  const parts = input.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) {
-    return { year: null as number | null, make: null as string | null, model: null as string | null };
-  }
+function formatVehicleTitle(year: number | null, make: string, model: string) {
+  const parts = [year != null ? String(year) : "", make.trim(), model.trim()].filter(Boolean);
+  return parts.join(" ");
+}
 
-  let year: number | null = null;
-  let startIndex = 0;
+interface ProfileViewProps {
+  userId: number;
+  onLogout: () => void;
+  onNavigate: (view: View) => void;
+}
 
-  const maybeYear = parseInt(parts[0], 10);
-  if (!Number.isNaN(maybeYear) && parts[0].length === 4) {
-    year = maybeYear;
-    startIndex = 1;
-  }
-
-  let make: string | null = null;
-  let model: string | null = null;
-
-  if (parts.length - startIndex >= 1) {
-    make = parts[startIndex];
-  }
-  if (parts.length - startIndex >= 2) {
-    model = parts.slice(startIndex + 1).join(" ");
-  }
-
-  return { year, make, model };
-};
-
-const ProfileView = ({ userId }: { userId: number }) => {
+const ProfileView = ({ userId, onLogout, onNavigate }: ProfileViewProps) => {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [carMakeModel, setCarMakeModel] = useState("");
+  const [carYear, setCarYear] = useState<number | null>(null);
+  const [carMake, setCarMake] = useState("");
+  const [carModel, setCarModel] = useState("");
   const [carPlate, setCarPlate] = useState("");
   const [carColor, setCarColor] = useState("");
   const [profileImageUrl, setProfileImageUrl] = useState("");
   const [vehicleImageUrl, setVehicleImageUrl] = useState("");
   const [carId, setCarId] = useState<number | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const [userLevel, setUserLevel] = useState<string>("user");
+  const [totalRides, setTotalRides] = useState(0);
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editFirstName, setEditFirstName] = useState(firstName);
   const [editLastName, setEditLastName] = useState(lastName);
   const [editUsername, setEditUsername] = useState(username);
-  const [editCarMakeModel, setEditCarMakeModel] = useState(carMakeModel);
+  const [editCarYear, setEditCarYear] = useState("");
+  const [editCarMake, setEditCarMake] = useState("");
+  const [editCarModel, setEditCarModel] = useState("");
   const [editCarPlate, setEditCarPlate] = useState(carPlate);
   const [editProfileImageFile, setEditProfileImageFile] = useState<File | null>(null);
   const [editVehicleImageFile, setEditVehicleImageFile] = useState<File | null>(null);
+  const [focusVehicleFieldsOnOpen, setFocusVehicleFieldsOnOpen] = useState(false);
+  const editCarYearInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   useEffect(() => {
@@ -97,25 +90,44 @@ const ProfileView = ({ userId }: { userId: number }) => {
           setUsername(typeof user.username === "string" ? user.username : "");
           setEmail(typeof user.email === "string" ? user.email : "");
           setPhone(typeof user.phone === "string" ? user.phone : "");
+          setUserLevel(typeof user.user_level === "string" ? user.user_level : "user");
           setProfileImageUrl(typeof user.profile_photo_path === "string" ? user.profile_photo_path : "");
+
+          try {
+            const raw = localStorage.getItem("blueride.user");
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed?.user_id === userId) {
+                localStorage.setItem(
+                  "blueride.user",
+                  JSON.stringify({
+                    ...parsed,
+                    user_level: user.user_level ?? "user",
+                  })
+                );
+              }
+            }
+          } catch {
+            /* ignore */
+          }
 
           if (user.car_id) {
             setCarId(user.car_id);
             const carResponse = await fetch(`${API_BASE_URL}/api/cars/${user.car_id}`);
             if (carResponse.ok) {
               const car = await carResponse.json();
-              if (car.make && car.model) {
-                setCarMakeModel(`${car.year ?? ""} ${car.make} ${car.model}`.trim());
-              } else {
-                setCarMakeModel("");
-              }
+              setCarYear(typeof car.year === "number" && !Number.isNaN(car.year) ? car.year : null);
+              setCarMake(typeof car.make === "string" ? car.make : "");
+              setCarModel(typeof car.model === "string" ? car.model : "");
               setCarPlate(typeof car.license_plate === "string" ? car.license_plate : "");
               setCarColor(typeof car.color === "string" ? car.color : "");
               setVehicleImageUrl(typeof car.car_photo_path === "string" ? car.car_photo_path : "");
             }
           } else {
             setCarId(null);
-            setCarMakeModel("");
+            setCarYear(null);
+            setCarMake("");
+            setCarModel("");
             setCarPlate("");
             setCarColor("");
             setVehicleImageUrl("");
@@ -130,15 +142,53 @@ const ProfileView = ({ userId }: { userId: number }) => {
     fetchUser();
   }, [userId]);
 
-  const handleOpenEdit = () => {
+  useEffect(() => {
+    const fetchRideStats = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/users/${userId}/stats`);
+        if (!response.ok) throw new Error("Failed to fetch profile ride stats");
+        const stats = await response.json();
+        const count = Number(stats?.total_rides);
+        setTotalRides(Number.isFinite(count) && count >= 0 ? count : 0);
+      } catch (error) {
+        console.error("Error fetching profile ride stats:", error);
+        setTotalRides(0);
+      }
+    };
+
+    void fetchRideStats();
+  }, [userId]);
+
+  const syncEditFieldsFromProfile = () => {
     setEditFirstName(firstName);
     setEditLastName(lastName);
     setEditUsername(username);
-    setEditCarMakeModel(carMakeModel);
+    setEditCarYear(carYear != null ? String(carYear) : "");
+    setEditCarMake(carMake);
+    setEditCarModel(carModel);
     setEditCarPlate(carPlate);
     setEditProfileImageFile(null);
     setEditVehicleImageFile(null);
+  };
+
+  const handleOpenEdit = () => {
+    setFocusVehicleFieldsOnOpen(false);
+    syncEditFieldsFromProfile();
     setIsEditOpen(true);
+  };
+
+  const handleOpenAddVehicle = () => {
+    setFocusVehicleFieldsOnOpen(true);
+    syncEditFieldsFromProfile();
+    setIsEditOpen(true);
+  };
+
+  const parseYearInput = (raw: string): number | null => {
+    const t = raw.trim();
+    if (!t) return null;
+    const y = parseInt(t, 10);
+    if (Number.isNaN(y) || t.length !== 4) return null;
+    return y;
   };
 
   const handleSave = async () => {
@@ -158,6 +208,7 @@ const ProfileView = ({ userId }: { userId: number }) => {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
+          "X-Acting-User-Id": String(userId),
         },
         body: JSON.stringify({
           firstName: editFirstName.trim() || null,
@@ -183,38 +234,80 @@ const ProfileView = ({ userId }: { userId: number }) => {
         }
       }
 
-      // Update car details and photo if car exists
+      // Create or update car; then optional vehicle photo upload
       let carPhotoSuccess = true;
       let carDetailsSuccess = true;
       let newVehicleFilename = vehicleImageUrl;
-      if (carId) {
-        const { year, make, model } = parseCarMakeModel(editCarMakeModel);
+      let effectiveCarId = carId;
+
+      const yearParsed = parseYearInput(editCarYear);
+      const makeTrim = editCarMake.trim();
+      const modelTrim = editCarModel.trim();
+      const plateTrim = editCarPlate.trim();
+
+      const wantsVehicle =
+        !carId &&
+        (yearParsed != null ||
+          makeTrim.length > 0 ||
+          modelTrim.length > 0 ||
+          plateTrim.length > 0);
+
+      if (!carId && wantsVehicle && (!makeTrim || !modelTrim)) {
+        toast({
+          title: "Error",
+          description: "Make and model are required to add a vehicle.",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
+
+      if (!carId && makeTrim && modelTrim) {
+        const createResp = await fetch(`${API_BASE_URL}/api/users/${userId}/car`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            year: yearParsed,
+            make: makeTrim,
+            model: modelTrim,
+            licensePlate: plateTrim || null,
+          }),
+        });
+        carDetailsSuccess = createResp.ok;
+        if (createResp.ok) {
+          const created = await createResp.json().catch(() => null);
+          if (created && typeof created.car_id === "number") {
+            effectiveCarId = created.car_id;
+            setCarId(created.car_id);
+          }
+        }
+      } else if (carId) {
         const carDetailsResponse = await fetch(`${API_BASE_URL}/api/cars/${carId}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            year,
-            make,
-            model,
-            licensePlate: editCarPlate.trim() || null,
+            year: yearParsed,
+            make: makeTrim || null,
+            model: modelTrim || null,
+            licensePlate: plateTrim || null,
           }),
         });
         carDetailsSuccess = carDetailsResponse.ok;
+      }
 
-        if (editVehicleImageFile) {
-          const form = new FormData();
-          form.append("file", editVehicleImageFile);
-          const carPhotoResponse = await fetch(`${API_BASE_URL}/api/cars/${carId}/photo`, {
-            method: "POST",
-            body: form,
-          });
-          carPhotoSuccess = carPhotoResponse.ok;
-          if (carPhotoResponse.ok) {
-            const json = await carPhotoResponse.json().catch(() => null);
-            if (json && typeof json.filename === "string") newVehicleFilename = json.filename;
-          }
+      if (effectiveCarId && editVehicleImageFile) {
+        const form = new FormData();
+        form.append("file", editVehicleImageFile);
+        const carPhotoResponse = await fetch(`${API_BASE_URL}/api/cars/${effectiveCarId}/photo`, {
+          method: "POST",
+          body: form,
+        });
+        carPhotoSuccess = carPhotoResponse.ok;
+        if (carPhotoResponse.ok) {
+          const json = await carPhotoResponse.json().catch(() => null);
+          if (json && typeof json.filename === "string") newVehicleFilename = json.filename;
         }
       }
 
@@ -222,11 +315,30 @@ const ProfileView = ({ userId }: { userId: number }) => {
         const updated = await userResponse.json().catch(() => null);
         if (updated && typeof updated.email === "string") setEmail(updated.email);
         if (updated && typeof updated.phone === "string") setPhone(updated.phone);
+        if (updated && typeof updated.user_level === "string") {
+          setUserLevel(updated.user_level);
+          try {
+            const raw = localStorage.getItem("blueride.user");
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed?.user_id === userId) {
+                localStorage.setItem(
+                  "blueride.user",
+                  JSON.stringify({ ...parsed, user_level: updated.user_level })
+                );
+              }
+            }
+          } catch {
+            /* ignore */
+          }
+        }
         setUsername(editUsername.trim());
         setFirstName(editFirstName.trim());
         setLastName(editLastName.trim());
-        setCarMakeModel(editCarMakeModel.trim());
-        setCarPlate(editCarPlate.trim());
+        setCarYear(yearParsed);
+        setCarMake(makeTrim);
+        setCarModel(modelTrim);
+        setCarPlate(plateTrim);
         setProfileImageUrl(newProfileFilename);
         setVehicleImageUrl(newVehicleFilename);
         setIsEditOpen(false);
@@ -281,7 +393,7 @@ const ProfileView = ({ userId }: { userId: number }) => {
               </TooltipTrigger>
               <TooltipContent className="max-w-[200px] text-xs">
                 <p className="font-semibold">Verified BYU Student</p>
-                <p className="text-muted-foreground">Student status and vehicle info have been verified by STÜBER.</p>
+                <p className="text-muted-foreground">Student status and vehicle info have been verified by Blue Ride.</p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -293,23 +405,14 @@ const ProfileView = ({ userId }: { userId: number }) => {
               {profileLoaded ? (username ? `@${username}` : "—") : "…"}
             </p>
           </div>
-          <div className="mt-2 flex items-center gap-1 text-sm text-muted-foreground">
-            <Star className="h-4 w-4" />
-            <span>No ratings yet</span>
-          </div>
         </div>
 
-        {/* Stats cards — only real counts when the API provides them; until then show zeros / empty */}
-        <div className="mb-6 grid grid-cols-2 gap-3">
+        {/* Stats card */}
+        <div className="mb-6 grid grid-cols-1 gap-3">
           <div className="flex flex-col items-center rounded-xl border border-border bg-card p-4 shadow-sm">
             <Route className="mb-1 h-5 w-5 text-primary" />
-            <span className="text-2xl font-bold text-foreground">0</span>
+            <span className="text-2xl font-bold text-foreground">{totalRides}</span>
             <span className="text-xs text-muted-foreground">Total Rides</span>
-          </div>
-          <div className="flex flex-col items-center rounded-xl border border-border bg-card p-4 shadow-sm">
-            <Award className="mb-1 h-5 w-5 text-primary" />
-            <span className="text-2xl font-bold text-foreground">—</span>
-            <span className="text-xs text-muted-foreground">Avg. Rating</span>
           </div>
         </div>
 
@@ -330,13 +433,33 @@ const ProfileView = ({ userId }: { userId: number }) => {
           {email ? (
             <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3.5">
               <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <span className="break-all text-sm text-foreground">{email}</span>
+              <a
+                href={mailtoHref(email)}
+                className="break-all text-sm text-primary underline-offset-2 hover:underline"
+              >
+                {email}
+              </a>
             </div>
           ) : null}
           {phone.trim() ? (
-            <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3.5">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-card p-3.5">
               <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <span className="text-sm text-foreground">{phone}</span>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                <a
+                  href={telHref(phone)}
+                  className="text-primary underline-offset-2 hover:underline"
+                >
+                  {phone}
+                </a>
+                {smsHref(phone) ? (
+                  <a
+                    href={smsHref(phone)}
+                    className="shrink-0 text-primary underline-offset-2 hover:underline"
+                  >
+                    Text
+                  </a>
+                ) : null}
+              </div>
             </div>
           ) : null}
           <div className="flex items-center gap-3 rounded-lg border border-border bg-card p-3.5">
@@ -351,7 +474,7 @@ const ProfileView = ({ userId }: { userId: number }) => {
               <Car className="h-4 w-4 shrink-0 text-muted-foreground" />
               <div>
                 <span className="text-sm font-medium text-foreground">
-                  {carMakeModel.trim() || "Vehicle on file"}
+                  {formatVehicleTitle(carYear, carMake, carModel).trim() || "Vehicle on file"}
                 </span>
                 {(carColor || carPlate) ? (
                   <p className="text-xs text-muted-foreground">
@@ -363,9 +486,14 @@ const ProfileView = ({ userId }: { userId: number }) => {
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-card/50 p-3.5">
-              <Car className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">No vehicle added yet</span>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-card/50 p-3.5">
+              <div className="flex min-w-0 items-center gap-3">
+                <Car className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">No vehicle added yet</span>
+              </div>
+              <Button type="button" size="sm" variant="secondary" className="shrink-0" onClick={handleOpenAddVehicle}>
+                Add vehicle
+              </Button>
             </div>
           )}
         </div>
@@ -384,12 +512,26 @@ const ProfileView = ({ userId }: { userId: number }) => {
         ) : carId ? (
           <>
             <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vehicle</h3>
-            <p className="mb-6 text-sm text-muted-foreground">No vehicle photo yet — add a URL in Edit Profile.</p>
+            <p className="mb-6 text-sm text-muted-foreground">No vehicle photo yet — add one in Edit Profile.</p>
           </>
         ) : null}
       </div>
-      <Dialog open={isEditOpen} onOpenChange={(open) => !loading && setIsEditOpen(open)}>
-        <DialogContent>
+      <Dialog
+        open={isEditOpen}
+        onOpenChange={(open) => {
+          if (loading) return;
+          if (!open) setFocusVehicleFieldsOnOpen(false);
+          setIsEditOpen(open);
+        }}
+      >
+        <DialogContent
+          onOpenAutoFocus={(e) => {
+            if (focusVehicleFieldsOnOpen) {
+              e.preventDefault();
+              queueMicrotask(() => editCarYearInputRef.current?.focus());
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Edit Profile</DialogTitle>
             <DialogDescription>Update your personal and vehicle information.</DialogDescription>
@@ -439,13 +581,36 @@ const ProfileView = ({ userId }: { userId: number }) => {
 
             {/* Vehicle info */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-foreground">Car make &amp; model</label>
+              <label className="text-xs font-medium text-foreground">Year</label>
               <Input
-                value={editCarMakeModel}
-                onChange={(e) => setEditCarMakeModel(e.target.value)}
-                placeholder="e.g. 2024 Tesla Model 3"
+                ref={editCarYearInputRef}
+                inputMode="numeric"
+                value={editCarYear}
+                onChange={(e) => setEditCarYear(e.target.value)}
+                placeholder="e.g. 2024"
+                maxLength={4}
                 disabled={loading}
               />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">Make</label>
+                <Input
+                  value={editCarMake}
+                  onChange={(e) => setEditCarMake(e.target.value)}
+                  placeholder="e.g. Tesla"
+                  disabled={loading}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">Model</label>
+                <Input
+                  value={editCarModel}
+                  onChange={(e) => setEditCarModel(e.target.value)}
+                  placeholder="e.g. Model 3"
+                  disabled={loading}
+                />
+              </div>
             </div>
             <div className="space-y-1">
               <label className="text-xs font-medium text-foreground">License plate</label>
@@ -471,7 +636,11 @@ const ProfileView = ({ userId }: { userId: number }) => {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => !loading && setIsEditOpen(false)}
+              onClick={() => {
+                if (loading) return;
+                setFocusVehicleFieldsOnOpen(false);
+                setIsEditOpen(false);
+              }}
               disabled={loading}
             >
               Cancel
