@@ -314,15 +314,14 @@ const ProfileView = ({ userId }: { userId: number }) => {
         </div>
 
         {/* Actions */}
-        <div className="mb-6 flex gap-3">
+        <div className="mb-6 flex justify-center">
           <Button
             variant="outline"
-            className="flex-1 text-sm"
+            className="text-sm"
             onClick={handleOpenEdit}
           >
             Edit Profile
           </Button>
-          <Button variant="outline" className="flex-1 text-sm">Share Profile</Button>
         </div>
 
         {/* Info cards — data from the API only (no demo major, location, or stock photos) */}
