@@ -389,6 +389,51 @@ app.get('/api/users/:id', async (req, res) => {
   }
 });
 
+// Get user profile stats
+app.get('/api/users/:id/stats', async (req, res) => {
+  try {
+    const parsedUserId = Number(req.params.id);
+    if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
+      return res.status(400).json({ error: 'Valid user id is required' });
+    }
+
+    const userResult = await pool.query(
+      'SELECT user_id FROM users WHERE user_id = $1',
+      [parsedUserId]
+    );
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const statsResult = await pool.query(
+      `SELECT COUNT(*)::int AS total_rides
+       FROM ride_offer
+       WHERE user_id = $1`,
+      [parsedUserId]
+    );
+
+    res.json({ total_rides: statsResult.rows[0]?.total_rides ?? 0 });
+  } catch (error) {
+    console.error('Error fetching user stats:', error);
+    if (error.code === '3D000') {
+      return res.status(500).json({
+        error: 'Database does not exist. Please run the database setup scripts first.',
+      });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({
+        error: 'Database authentication failed. Please check your .env file credentials.',
+      });
+    }
+    if (error.code === '42P01') {
+      return res.status(500).json({
+        error: 'Ride tables do not exist. Please run schema.sql.',
+      });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Update user details (self: name/username/phone; admin: may also set email, userLevel)
 app.put('/api/users/:id', async (req, res) => {
   try {
