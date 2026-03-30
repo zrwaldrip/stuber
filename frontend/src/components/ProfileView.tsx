@@ -417,31 +417,13 @@ const ProfileView = ({ userId, onLogout, onNavigate }: ProfileViewProps) => {
         </div>
 
         {/* Actions */}
-        <div className="mb-6 flex flex-col gap-3">
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              className="flex-1 text-sm"
-              onClick={handleOpenEdit}
-            >
-              Edit Profile
-            </Button>
-            <Button variant="outline" className="flex-1 text-sm">Share Profile</Button>
-          </div>
-          {userLevel === "admin" ? (
-            <Button
-              variant="secondary"
-              className="w-full text-sm"
-              onClick={() => onNavigate("admin")}
-            >
-              Admin — manage users
-            </Button>
-          ) : null}
-        </div>
-        <div className="mb-6">
-          <Button variant="destructive" className="w-full gap-2 text-sm" onClick={onLogout}>
-            <LogOut className="h-4 w-4" />
-            Sign Out
+        <div className="mb-6 flex justify-center">
+          <Button
+            variant="outline"
+            className="text-sm"
+            onClick={handleOpenEdit}
+          >
+            Edit Profile
           </Button>
         </div>
 
