@@ -279,10 +279,13 @@ const RidesView = () => {
             className="pl-10 pr-10"
           />
           <button
+            type="button"
             onClick={() => setShowFilters(!showFilters)}
+            aria-label={showFilters ? "Hide ride search filters" : "Show ride search filters"}
+            aria-expanded={showFilters}
             className={`absolute right-3 top-1/2 -translate-y-1/2 rounded p-0.5 transition-colors ${showFilters ? "text-primary dark:text-accent" : "text-foreground/70 hover:text-foreground"}`}
           >
-            <SlidersHorizontal className="h-4 w-4" />
+            <SlidersHorizontal className="h-4 w-4" aria-hidden />
           </button>
         </div>
 
@@ -431,7 +434,13 @@ const RidesView = () => {
                   </button>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Shield className="h-3 w-3 text-primary dark:text-accent" />
+                      <button
+                        type="button"
+                        className="inline-flex shrink-0 text-primary dark:text-accent"
+                        aria-label="Verified BYU student"
+                      >
+                        <Shield className="h-3 w-3" aria-hidden />
+                      </button>
                     </TooltipTrigger>
                     <TooltipContent className="text-xs">Verified BYU Student</TooltipContent>
                   </Tooltip>

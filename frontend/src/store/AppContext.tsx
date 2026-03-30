@@ -153,8 +153,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       if (!response.ok) throw new Error("Failed to fetch live ride count");
       const data = await response.json();
       const rows = Array.isArray(data) ? data : [];
-      const count = rows.filter((r) => Number(r?.available_seats ?? 0) > 0).length;
-      setLiveRideCount(count);
+      // Same as /api/rides: upcoming active offers (includes full rides with 0 seats).
+      setLiveRideCount(rows.length);
     } catch (error) {
       console.error("Error refreshing live ride count:", error);
     }

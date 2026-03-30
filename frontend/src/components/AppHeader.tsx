@@ -17,17 +17,24 @@ const AppHeader = ({ onNavigate, isLoggedIn }: AppHeaderProps) => {
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur-lg">
       <div className="mx-auto flex h-14 max-w-lg items-center justify-between px-4">
-        <button onClick={() => onNavigate("rides")} className="flex items-center">
+        <button
+          type="button"
+          onClick={() => onNavigate("rides")}
+          className="flex items-center"
+          aria-label="Blue Ride home, go to available rides"
+        >
           <Logo />
         </button>
 
         <div className="flex items-center gap-2">
           {/* Live indicator */}
           <button
+            type="button"
             onClick={() => onNavigate("rides")}
             className="flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
+            aria-label={`${liveRideCount} live rides offered, go to rides list`}
           >
-            <Radio className="h-3 w-3 animate-pulse" />
+            <Radio className="h-3 w-3 animate-pulse" aria-hidden />
             {liveRideCount} Live
           </button>
         </div>

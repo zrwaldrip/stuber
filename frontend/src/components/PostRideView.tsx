@@ -209,7 +209,7 @@ const PostRideView = ({ userId, onComplete }: PostRideViewProps) => {
                 variant="outline"
                 className={cn("w-full justify-start text-left font-normal", !date && "text-muted-foreground")}
               >
-                <CalendarIcon className="mr-2 h-4 w-4" />
+                <CalendarIcon className="mr-2 h-4 w-4" aria-hidden />
                 {date ? format(date, "MMM d, yyyy") : "Pick a date"}
               </Button>
             </PopoverTrigger>
@@ -252,8 +252,9 @@ const PostRideView = ({ userId, onComplete }: PostRideViewProps) => {
               className="h-10 w-10 shrink-0"
               onClick={() => setSeats((s) => Math.max(1, s - 1))}
               disabled={seats <= 1}
+              aria-label="Decrease available seats by one"
             >
-              <Minus className="h-4 w-4" />
+              <Minus className="h-4 w-4" aria-hidden />
             </Button>
             <div className="flex-1 text-center">
               <span className="text-3xl font-semibold text-foreground">{seats}</span>
@@ -266,8 +267,9 @@ const PostRideView = ({ userId, onComplete }: PostRideViewProps) => {
               className="h-10 w-10 shrink-0"
               onClick={() => setSeats((s) => Math.min(6, s + 1))}
               disabled={seats >= 6}
+              aria-label="Increase available seats by one"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-4 w-4" aria-hidden />
             </Button>
           </div>
         </div>

@@ -22,7 +22,10 @@ const BottomNav = ({ currentView, onNavigate }: BottomNavProps) => {
           return (
             <button
               key={item.view}
+              type="button"
               onClick={() => onNavigate(item.view)}
+              aria-label={item.view === "post" ? "Post a ride" : undefined}
+              aria-current={active ? "page" : undefined}
               className={`flex flex-col items-center gap-0.5 rounded-lg px-4 py-1.5 transition-colors ${
                 active
                   ? "text-foreground dark:bg-accent/15 dark:text-accent"
@@ -30,11 +33,11 @@ const BottomNav = ({ currentView, onNavigate }: BottomNavProps) => {
               }`}
             >
               {item.view === "post" ? (
-                <div className={`flex h-10 w-10 items-center justify-center rounded-full ${active ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"} transition-colors`}>
-                  <item.icon className="h-5 w-5" />
+                <div className={`flex h-10 w-10 items-center justify-center rounded-full ${active ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"} transition-colors`} aria-hidden>
+                  <item.icon className="h-5 w-5" aria-hidden />
                 </div>
               ) : (
-                <item.icon className="h-5 w-5" />
+                <item.icon className="h-5 w-5" aria-hidden />
               )}
               {item.view !== "post" && (
                 <span className="text-[10px] font-medium">{item.label}</span>
