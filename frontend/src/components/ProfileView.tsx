@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { BadgeCheck, Car, Star, Shield, Award, Route, Mail, Phone, LogOut } from "lucide-react";
+import { BadgeCheck, Car, Shield, Route, Mail, Phone, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -62,6 +62,7 @@ const ProfileView = ({ userId, onLogout, onNavigate }: ProfileViewProps) => {
   const [carId, setCarId] = useState<number | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [userLevel, setUserLevel] = useState<string>("user");
+  const [totalRides, setTotalRides] = useState(0);
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editFirstName, setEditFirstName] = useState(firstName);
@@ -139,6 +140,23 @@ const ProfileView = ({ userId, onLogout, onNavigate }: ProfileViewProps) => {
       }
     };
     fetchUser();
+  }, [userId]);
+
+  useEffect(() => {
+    const fetchRideStats = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/users/${userId}/stats`);
+        if (!response.ok) throw new Error("Failed to fetch profile ride stats");
+        const stats = await response.json();
+        const count = Number(stats?.total_rides);
+        setTotalRides(Number.isFinite(count) && count >= 0 ? count : 0);
+      } catch (error) {
+        console.error("Error fetching profile ride stats:", error);
+        setTotalRides(0);
+      }
+    };
+
+    void fetchRideStats();
   }, [userId]);
 
   const syncEditFieldsFromProfile = () => {
@@ -387,23 +405,14 @@ const ProfileView = ({ userId, onLogout, onNavigate }: ProfileViewProps) => {
               {profileLoaded ? (username ? `@${username}` : "—") : "…"}
             </p>
           </div>
-          <div className="mt-2 flex items-center gap-1 text-sm text-muted-foreground">
-            <Star className="h-4 w-4" />
-            <span>No ratings yet</span>
-          </div>
         </div>
 
-        {/* Stats cards — only real counts when the API provides them; until then show zeros / empty */}
-        <div className="mb-6 grid grid-cols-2 gap-3">
+        {/* Stats card */}
+        <div className="mb-6 grid grid-cols-1 gap-3">
           <div className="flex flex-col items-center rounded-xl border border-border bg-card p-4 shadow-sm">
             <Route className="mb-1 h-5 w-5 text-primary" />
-            <span className="text-2xl font-bold text-foreground">0</span>
+            <span className="text-2xl font-bold text-foreground">{totalRides}</span>
             <span className="text-xs text-muted-foreground">Total Rides</span>
-          </div>
-          <div className="flex flex-col items-center rounded-xl border border-border bg-card p-4 shadow-sm">
-            <Award className="mb-1 h-5 w-5 text-primary" />
-            <span className="text-2xl font-bold text-foreground">—</span>
-            <span className="text-xs text-muted-foreground">Avg. Rating</span>
           </div>
         </div>
 

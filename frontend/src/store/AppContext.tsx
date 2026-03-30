@@ -11,7 +11,6 @@ export interface Driver {
   id: string;
   name: string;
   handle: string;
-  rating: number;
   totalRides: number;
   verified: boolean;
   vehicle: {
@@ -61,13 +60,13 @@ export const LOCATIONS: Location[] = [
 ];
 
 export const DRIVERS: Driver[] = [
-  { id: "d-1", name: "Alex Martinez", handle: "@alexm", rating: 4.9, totalRides: 142, verified: true, vehicle: { year: 2023, make: "Honda", model: "Civic", color: "Silver", licensePlate: "BYU-3291" } },
-  { id: "d-2", name: "Sarah Kim", handle: "@sarahk", rating: 4.8, totalRides: 98, verified: true, vehicle: { year: 2022, make: "Toyota", model: "Camry", color: "White", licensePlate: "UTH-7714" } },
-  { id: "d-3", name: "James Lewis", handle: "@jamesl", rating: 5.0, totalRides: 215, verified: true, vehicle: { year: 2024, make: "Tesla", model: "Model 3", color: "Black", licensePlate: "EV-04821" } },
-  { id: "d-4", name: "Emily Reyes", handle: "@emilyr", rating: 4.7, totalRides: 63, verified: true, vehicle: { year: 2021, make: "Hyundai", model: "Sonata", color: "Blue", licensePlate: "PRV-5580" } },
-  { id: "d-5", name: "David Wang", handle: "@davidw", rating: 4.6, totalRides: 47, verified: true, vehicle: { year: 2023, make: "Mazda", model: "CX-5", color: "Red", licensePlate: "UTH-9023" } },
-  { id: "d-6", name: "Rachel Torres", handle: "@rachelt", rating: 4.9, totalRides: 180, verified: true, vehicle: { year: 2022, make: "Subaru", model: "Outback", color: "Green", licensePlate: "MTN-3347" } },
-  { id: "d-7", name: "Chris Bennett", handle: "@chrisb", rating: 4.5, totalRides: 31, verified: false, vehicle: { year: 2020, make: "Ford", model: "Focus", color: "Gray", licensePlate: "BYU-1109" } },
+  { id: "d-1", name: "Alex Martinez", handle: "@alexm", totalRides: 142, verified: true, vehicle: { year: 2023, make: "Honda", model: "Civic", color: "Silver", licensePlate: "BYU-3291" } },
+  { id: "d-2", name: "Sarah Kim", handle: "@sarahk", totalRides: 98, verified: true, vehicle: { year: 2022, make: "Toyota", model: "Camry", color: "White", licensePlate: "UTH-7714" } },
+  { id: "d-3", name: "James Lewis", handle: "@jamesl", totalRides: 215, verified: true, vehicle: { year: 2024, make: "Tesla", model: "Model 3", color: "Black", licensePlate: "EV-04821" } },
+  { id: "d-4", name: "Emily Reyes", handle: "@emilyr", totalRides: 63, verified: true, vehicle: { year: 2021, make: "Hyundai", model: "Sonata", color: "Blue", licensePlate: "PRV-5580" } },
+  { id: "d-5", name: "David Wang", handle: "@davidw", totalRides: 47, verified: true, vehicle: { year: 2023, make: "Mazda", model: "CX-5", color: "Red", licensePlate: "UTH-9023" } },
+  { id: "d-6", name: "Rachel Torres", handle: "@rachelt", totalRides: 180, verified: true, vehicle: { year: 2022, make: "Subaru", model: "Outback", color: "Green", licensePlate: "MTN-3347" } },
+  { id: "d-7", name: "Chris Bennett", handle: "@chrisb", totalRides: 31, verified: false, vehicle: { year: 2020, make: "Ford", model: "Focus", color: "Gray", licensePlate: "BYU-1109" } },
 ];
 
 const INITIAL_RIDES: RideOffer[] = [
