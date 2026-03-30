@@ -387,9 +387,13 @@ const ProfileView = ({ userId, onLogout, onNavigate }: ProfileViewProps) => {
             )}
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="absolute -bottom-1 -right-1 flex h-7 w-7 cursor-help items-center justify-center rounded-full bg-primary shadow-sm">
-                  <BadgeCheck className="h-4 w-4 text-primary-foreground" />
-                </div>
+                <button
+                  type="button"
+                  className="absolute -bottom-1 -right-1 flex h-7 w-7 cursor-help items-center justify-center rounded-full bg-primary shadow-sm"
+                  aria-label="Verified BYU student details"
+                >
+                  <BadgeCheck className="h-4 w-4 text-primary-foreground" aria-hidden />
+                </button>
               </TooltipTrigger>
               <TooltipContent className="max-w-[200px] text-xs">
                 <p className="font-semibold">Verified BYU Student</p>

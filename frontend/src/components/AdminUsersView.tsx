@@ -209,8 +209,14 @@ const AdminUsersView = ({ actingUserId, onNavigate }: AdminUsersViewProps) => {
   return (
     <div className="mx-auto max-w-lg animate-fade-in px-4 py-6 pb-24">
       <div className="mb-4 flex items-center gap-3">
-        <Button variant="ghost" size="icon" className="shrink-0" onClick={() => onNavigate("profile")}>
-          <ArrowLeft className="h-5 w-5" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="shrink-0"
+          onClick={() => onNavigate("profile")}
+          aria-label="Back to profile"
+        >
+          <ArrowLeft className="h-5 w-5" aria-hidden />
         </Button>
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-semibold text-foreground">Admin</h1>

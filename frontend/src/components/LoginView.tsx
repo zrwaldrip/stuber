@@ -182,37 +182,30 @@ const LoginView = ({ onLogin }: LoginViewProps) => {
               </div>
             </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            <Button type="submit" className="w-full" disabled={loading} aria-busy={loading}>
+              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : null}
               {loading ? (isSignUp ? "Creating account…" : "Signing in…") : (isSignUp ? "Create Account" : "Sign In")}
             </Button>
           </form>
 
-          {/* <div className="mt-4 space-y-2">
-            {!isSignUp && (
-              <button className="w-full text-center text-sm text-primary hover:underline">
-                Forgot password?
-              </button>
-            )} */}
-            <div className="flex items-center justify-center gap-1 text-sm text-muted-foreground">
-              <span>{isSignUp ? "Already have an account?" : "New to Blue Ride?"}</span>
-              <button
-                type="button"
-                onClick={() => setIsSignUp(!isSignUp)}
-                className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
-              >
-                {isSignUp ? "Sign In" : (
-                  <>
-                    <UserPlus className="h-3.5 w-3.5" />
-                    Create Account
-                  </>
-                )}
-              </button>
-            </div>
+          <div className="flex items-center justify-center gap-1 text-sm text-muted-foreground">
+            <span>{isSignUp ? "Already have an account?" : "New to Blue Ride?"}</span>
+            <button
+              type="button"
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+            >
+              {isSignUp ? "Sign In" : (
+                <>
+                  <UserPlus className="h-3.5 w-3.5" aria-hidden />
+                  Create Account
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>
-    // </div>
+    </div>
   );
 };
 
