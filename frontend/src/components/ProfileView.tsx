@@ -418,7 +418,7 @@ const ProfileView = ({ userId, onLogout, onNavigate }: ProfileViewProps) => {
 
         {/* Actions */}
         <div className="mb-6 flex flex-col gap-3">
-          <div className="flex gap-3">
+          <div className="flex justify-center">
             <Button
               variant="outline"
               className="flex-1 text-sm"
@@ -426,7 +426,6 @@ const ProfileView = ({ userId, onLogout, onNavigate }: ProfileViewProps) => {
             >
               Edit Profile
             </Button>
-            <Button variant="outline" className="flex-1 text-sm">Share Profile</Button>
           </div>
           {userLevel === "admin" ? (
             <Button
