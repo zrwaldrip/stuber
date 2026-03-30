@@ -1,4 +1,4 @@
-import { MapPin, ArrowRight, Clock, Star, Car, Shield, Users, Check, Loader2 } from "lucide-react";
+import { MapPin, ArrowRight, Clock, Car, Shield, Users, Check, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,11 +52,7 @@ const DriverProfileModal = ({ driver, isOpen, onClose }: DriverProfileModalProps
 
         <div className="overflow-y-auto flex-1 space-y-4 pr-1">
           {/* Stats */}
-          <div className="flex gap-4 text-sm">
-            <span className="flex items-center gap-1">
-              <Star className="h-4 w-4 fill-primary text-primary" />
-              <span className="font-medium">{driver.rating.toFixed(1)}</span>
-            </span>
+          <div className="text-sm">
             <span className="text-muted-foreground">{driver.totalRides} rides completed</span>
           </div>
 
