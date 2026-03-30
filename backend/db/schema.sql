@@ -565,3 +565,35 @@ ALTER TABLE ONLY public.trip
 
 ALTER TABLE ONLY public.trip
     ADD CONSTRAINT trip_request_id_fkey FOREIGN KEY (request_id) REFERENCES public.ride_request(request_id);
+
+--
+-- In-app notifications (e.g. driver declined a booking)
+--
+
+CREATE TABLE IF NOT EXISTS public.user_notification (
+    notification_id integer NOT NULL,
+    user_id integer NOT NULL,
+    message text NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    read_at timestamp without time zone
+);
+
+CREATE SEQUENCE IF NOT EXISTS public.user_notification_notification_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+ALTER SEQUENCE public.user_notification_notification_id_seq OWNED BY public.user_notification.notification_id;
+
+ALTER TABLE ONLY public.user_notification ALTER COLUMN notification_id SET DEFAULT nextval('public.user_notification_notification_id_seq'::regclass);
+
+ALTER TABLE ONLY public.user_notification
+    ADD CONSTRAINT user_notification_pkey PRIMARY KEY (notification_id);
+
+ALTER TABLE ONLY public.user_notification
+    ADD CONSTRAINT user_notification_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(user_id) ON DELETE CASCADE;
+
+CREATE INDEX IF NOT EXISTS idx_user_notification_user_unread ON public.user_notification (user_id) WHERE read_at IS NULL;

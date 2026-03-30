@@ -139,6 +139,29 @@ const ensureUserLevelColumn = async () => {
   }
 };
 
+const ensureUserNotificationTable = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS public.user_notification (
+        notification_id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES public.users(user_id) ON DELETE CASCADE,
+        message TEXT NOT NULL,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        read_at TIMESTAMP WITHOUT TIME ZONE
+      );
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_notification_user_unread
+      ON public.user_notification (user_id)
+      WHERE read_at IS NULL;
+    `);
+  } catch (error) {
+    console.error('Error ensuring user_notification table:', error);
+  }
+};
+
+void ensureUserNotificationTable();
+
 const getActingUserId = (req) => {
   const raw = req.headers['x-acting-user-id'];
   const n = Number(raw);
@@ -963,6 +986,8 @@ app.get('/api/rides', async (req, res) => {
         u.first_name AS driver_first_name,
         u.last_name AS driver_last_name,
         u.username AS driver_username,
+        u.email AS driver_email,
+        u.phone AS driver_phone,
         u.profile_photo_path AS driver_profile_photo_path,
         c.year AS car_year,
         c.make AS car_make,
@@ -1193,6 +1218,259 @@ app.delete('/api/rides/:offerId/book', async (req, res) => {
   }
 });
 
+// Driver declines a rider: removes booking and notifies the rider (same seat restore as rider cancel).
+app.post('/api/rides/:offerId/decline-booking', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const parsedOfferId = Number(req.params.offerId);
+    const driverUserId = Number(req.body?.driverUserId);
+    const riderUserId = Number(req.body?.riderUserId);
+
+    if (!Number.isInteger(parsedOfferId) || parsedOfferId <= 0) {
+      return res.status(400).json({ error: 'Valid offerId is required' });
+    }
+    if (!Number.isInteger(driverUserId) || driverUserId <= 0) {
+      return res.status(400).json({ error: 'Valid driverUserId is required' });
+    }
+    if (!Number.isInteger(riderUserId) || riderUserId <= 0) {
+      return res.status(400).json({ error: 'Valid riderUserId is required' });
+    }
+    if (driverUserId === riderUserId) {
+      return res.status(400).json({ error: 'Invalid rider' });
+    }
+
+    await client.query('BEGIN');
+
+    const offerResult = await client.query(
+      `SELECT
+         ro.offer_id,
+         ro.user_id,
+         ro.departure_time,
+         lf.name AS from_location_name,
+         lt.name AS to_location_name
+       FROM ride_offer ro
+       JOIN location lf ON lf.location_id = ro.from_location_id
+       JOIN location lt ON lt.location_id = ro.to_location_id
+       WHERE ro.offer_id = $1
+       FOR UPDATE`,
+      [parsedOfferId]
+    );
+    if (offerResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Ride offer not found' });
+    }
+    const offer = offerResult.rows[0];
+    if (Number(offer.user_id) !== driverUserId) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Only the driver can remove a rider from this ride' });
+    }
+    if (new Date(offer.departure_time).getTime() < Date.now()) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Ride has already departed' });
+    }
+
+    const bookingResult = await client.query(
+      `SELECT t.trip_id, t.request_id, t.seats_confirmed
+       FROM trip t
+       JOIN ride_request rr ON rr.request_id = t.request_id
+       WHERE t.offer_id = $1
+         AND rr.user_id = $2
+         AND t.status IN ('pending', 'confirmed', 'active')
+       ORDER BY t.created_at DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [parsedOfferId, riderUserId]
+    );
+    if (bookingResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'No active booking found for this rider' });
+    }
+
+    const booking = bookingResult.rows[0];
+    const seatCount = Math.max(1, Number(booking.seats_confirmed || 1));
+
+    await client.query(
+      `UPDATE trip
+       SET status = 'cancelled'
+       WHERE trip_id = $1`,
+      [booking.trip_id]
+    );
+    await client.query(
+      `UPDATE ride_request
+       SET status = 'cancelled'
+       WHERE request_id = $1`,
+      [booking.request_id]
+    );
+    await client.query(
+      `UPDATE ride_offer
+       SET available_seats = available_seats + $2
+       WHERE offer_id = $1`,
+      [parsedOfferId, seatCount]
+    );
+
+    const fromName = offer.from_location_name || 'Start';
+    const toName = offer.to_location_name || 'Destination';
+    const depLabel = new Date(offer.departure_time).toLocaleString();
+    const message = `The driver removed you from their ride (${fromName} → ${toName}, ${depLabel}). Your booking is canceled.`;
+
+    await client.query(
+      `INSERT INTO user_notification (user_id, message)
+       VALUES ($1, $2)`,
+      [riderUserId, message]
+    );
+
+    await client.query('COMMIT');
+    res.json({ success: true, trip_id: booking.trip_id });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error declining booking:', error);
+    if (error.code === '3D000') {
+      return res.status(500).json({ error: 'Database does not exist. Please run the database setup scripts first.' });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({ error: 'Database authentication failed. Please check your .env file credentials.' });
+    }
+    if (error.code === '42P01') {
+      return res.status(500).json({ error: 'Ride/trip tables do not exist. Please run schema.sql.' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
+// Unread notifications for a user (e.g. after login or app load).
+app.get('/api/notifications', async (req, res) => {
+  try {
+    const userId = Number(req.query.userId);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ error: 'Valid userId query param is required' });
+    }
+
+    const userCheck = await pool.query('SELECT user_id FROM users WHERE user_id = $1', [userId]);
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const result = await pool.query(
+      `SELECT notification_id, message, created_at
+       FROM user_notification
+       WHERE user_id = $1 AND read_at IS NULL
+       ORDER BY created_at ASC`,
+      [userId]
+    );
+    res.json({ notifications: result.rows });
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    if (error.code === '42P01') {
+      return res.status(500).json({ error: 'Notifications table missing. Restart the server to run migrations.' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/notifications/mark-read', async (req, res) => {
+  try {
+    const userId = Number(req.body?.userId);
+    const rawIds = req.body?.notificationIds;
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ error: 'Valid userId is required' });
+    }
+    if (!Array.isArray(rawIds) || rawIds.length === 0) {
+      return res.json({ success: true, updated: 0 });
+    }
+    const ids = rawIds
+      .map((id) => Number(id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+    if (ids.length === 0) {
+      return res.json({ success: true, updated: 0 });
+    }
+
+    const result = await pool.query(
+      `UPDATE user_notification
+       SET read_at = NOW()
+       WHERE user_id = $1 AND notification_id = ANY($2::int[]) AND read_at IS NULL`,
+      [userId, ids]
+    );
+    res.json({ success: true, updated: result.rowCount ?? 0 });
+  } catch (error) {
+    console.error('Error marking notifications read:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete a ride offer (driver only). Removes related trips and booking ride_requests first.
+app.delete('/api/rides/:offerId', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const parsedOfferId = Number(req.params.offerId);
+    const parsedUserId = Number(req.query.userId);
+
+    if (!Number.isInteger(parsedOfferId) || parsedOfferId <= 0) {
+      return res.status(400).json({ error: 'Valid offerId is required' });
+    }
+    if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) {
+      return res.status(400).json({ error: 'Valid userId query param is required' });
+    }
+
+    await client.query('BEGIN');
+
+    const offerResult = await client.query(
+      `SELECT offer_id, user_id, departure_time
+       FROM ride_offer
+       WHERE offer_id = $1
+       FOR UPDATE`,
+      [parsedOfferId]
+    );
+    if (offerResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Ride offer not found' });
+    }
+
+    const offer = offerResult.rows[0];
+    if (Number(offer.user_id) !== parsedUserId) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'You can only delete rides you posted' });
+    }
+    if (new Date(offer.departure_time).getTime() < Date.now()) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Cannot delete a ride that has already departed' });
+    }
+
+    const tripsResult = await client.query(
+      `SELECT request_id FROM trip WHERE offer_id = $1`,
+      [parsedOfferId]
+    );
+    const requestIds = [...new Set(tripsResult.rows.map((row) => row.request_id).filter((id) => id != null))];
+
+    await client.query('DELETE FROM trip WHERE offer_id = $1', [parsedOfferId]);
+
+    if (requestIds.length > 0) {
+      await client.query('DELETE FROM ride_request WHERE request_id = ANY($1::int[])', [requestIds]);
+    }
+
+    await client.query('DELETE FROM ride_offer WHERE offer_id = $1', [parsedOfferId]);
+
+    await client.query('COMMIT');
+    res.json({ success: true, offer_id: parsedOfferId });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error deleting ride offer:', error);
+    if (error.code === '3D000') {
+      return res.status(500).json({ error: 'Database does not exist. Please run the database setup scripts first.' });
+    }
+    if (error.code === '28P01') {
+      return res.status(500).json({ error: 'Database authentication failed. Please check your .env file credentials.' });
+    }
+    if (error.code === '42P01') {
+      return res.status(500).json({ error: 'Ride/trip tables do not exist. Please run schema.sql.' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
 // Get rides for a specific user (booked + offered)
 app.get('/api/my-rides', async (req, res) => {
   try {
@@ -1223,6 +1501,8 @@ app.get('/api/my-rides', async (req, res) => {
           u.first_name AS driver_first_name,
           u.last_name AS driver_last_name,
           u.username AS driver_username,
+          u.email AS driver_email,
+          u.phone AS driver_phone,
           u.profile_photo_path AS driver_profile_photo_path,
           c.year AS car_year,
           c.make AS car_make,
